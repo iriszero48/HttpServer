@@ -244,6 +244,11 @@ namespace KappaJuko
 		{510, "Not Extended"},
 		{511, "Network Authentication Required"},
 	};
+
+	static std::unordered_map<std::string_view, std::string_view> HttpContentType
+	{
+		{"", ""},
+	};
 	
 	class Response
 	{
@@ -264,6 +269,10 @@ namespace KappaJuko
 		
 		bool Send(SocketType client);
 
+		bool SendAndClose(SocketType client);
+
+		[[nodiscard]] static Response FromStatusCode(uint16_t statusCode);
+
 		[[nodiscard]] static Response FromHtml(const std::ostringstream& html, uint16_t statusCode = 200);
 
 		[[nodiscard]] static Response FromFile(const std::filesystem::path& path, uint16_t statusCode = 200);
@@ -282,7 +291,9 @@ namespace KappaJuko
 		bool AutoIndexMode = false;
 		bool NotFoundRedirect = false;
 		std::string_view Charset = "utf-8";
-		Response NotFoundResponse;
+		Response NotFoundResponse = Response::FromStatusCode(404);
+		Response ForbiddenResponse = Response::FromStatusCode(403);
+		std::vector<std::string_view> IndexPages = { "index.html" };
 		std::optional<std::function<bool(Request&)>> CgiHook = std::nullopt;
 
 		[[nodiscard]] static LauncherParams FromArgs(int args, char** argv);

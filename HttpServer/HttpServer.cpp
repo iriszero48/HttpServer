@@ -160,6 +160,26 @@ namespace KappaJuko
 		}
 		return true;
 	}
+
+	bool Response::SendAndClose(const SocketType client)
+	{
+		Send(client);
+		CloseSocket(client);
+		return true;
+	}
+
+	Response Response::FromStatusCode(uint16_t statusCode)
+	{
+		std::ostringstream page{};
+		page
+			<< "<html><head><title>" << statusCode << "</title></head>"
+			<< "<body><h1>" << statusCode << " - " << HttpStatusCodes[statusCode] << "</h1><br/><hr>"
+			<< ServerVersion
+			<< "</body></html>";
+		auto resp = Response::FromHtml(page, statusCode);
+		resp.Finish();
+		return resp;
+	}
 	
 	Response Response::FromHtml(const std::ostringstream& html, const uint16_t statusCode)
 	{
@@ -264,24 +284,49 @@ namespace KappaJuko
 			"charset(utf-8)",
 			"utf-8"
 		};
-		std::ostringstream defaultNotFoundResponsePage{};
-		defaultNotFoundResponsePage
-			<< "<html><head><title>404</title></head>"
-			<< "<body><h1>Error 404 - " << HttpStatusCodes[404] << "</h1><br/><hr>"
-			<< ServerVersion
-			<< "</body></html>";
-		auto defaultNotFoundResponse = Response::FromHtml(defaultNotFoundResponsePage, 404);
-		defaultNotFoundResponse.Finish();
 		Argument<Response> notFoundResponse
 		{
-			"--404page",
+			"--404",
 			"404 page",
-			defaultNotFoundResponse,
+			Response::FromStatusCode(404),
 			ArgumentsFunc(notFoundResponse)
 			{
 				auto resp = Response::FromFile(Convert::ToString(value), 404);
 				resp.Finish();
-				return { resp, {}};
+				return {resp, {}};
+			}
+		};
+		Argument<Response> forbiddenResponse
+		{
+			"--403",
+			"403 page",
+			Response::FromStatusCode(403),
+			ArgumentsFunc(forbiddenResponse)
+			{
+				auto resp = Response::FromFile(Convert::ToString(value), 403);
+				resp.Finish();
+				return {resp, {}};
+			}
+		};
+		Argument<std::vector<std::string_view>> indexPages
+		{
+			"--indexPages",
+			"index pages",
+			{
+				{ "index.html" }
+			},
+			ArgumentsFunc(indexPages)
+			{
+				std::vector<std::string_view> res{};
+				auto pos = value.find(',');
+				decltype(pos) i = 0;
+				while (pos != std::string_view::npos)
+				{
+					res.push_back(value.substr(i, pos - i));
+					i = pos;
+				}
+				res.push_back(value.substr(i));
+				return {res, {}};
 			}
 		};
 		args.Add(rootPath);
@@ -292,6 +337,8 @@ namespace KappaJuko
 		args.Add(notFoundRedirect);
 		args.Add(charset);
 		args.Add(notFoundResponse);
+		args.Add(forbiddenResponse);
+		args.Add(indexPages);
 		try
 		{
 			args.Parse(_args, _argv);
@@ -304,7 +351,9 @@ namespace KappaJuko
 				ArgumentsValue(autoIndexMode),
 				ArgumentsValue(notFoundRedirect),
 				ArgumentsValue(charset),
-				ArgumentsValue(notFoundResponse)
+				ArgumentsValue(notFoundResponse),
+				ArgumentsValue(forbiddenResponse),
+				ArgumentsValue(indexPages)
 			};
 		}
 		catch (const std::exception& ex)
@@ -411,28 +460,41 @@ namespace KappaJuko
 				return true;
 			}
 		}
-		const auto realPath = params.RootPath / req.Path();
+		auto realPath = params.RootPath / req.Path();
 		switch (req.Method())
 		{
 		case HttpMethod::GET:
 		case HttpMethod::POST:
 			if (exists(realPath))
 			{
+				if (is_directory(realPath))
+				{
+					auto pos = std::find_if(
+						params.IndexPages.begin(),
+						params.IndexPages.end(),
+						[&](const auto& index) { return exists(realPath / index); });
+					if (pos == params.IndexPages.end())
+					{
+						if (params.AutoIndexMode)
+						{
+
+						}
+						params.ForbiddenResponse.SendAndClose(client);
+						return true;
+					}
+					realPath /= *pos;
+				}
 				if (is_regular_file(realPath))
 				{
 					auto resp = Response::FromFile(realPath);
 					resp.Finish();
-					resp.Send(req.Client);
-					CloseSocket(client);
+					resp.SendAndClose(req.Client);
 					return true;
 				}
-				if (params.AutoIndexMode && is_directory(realPath))
-				{
-					
-				}
+				params.ForbiddenResponse.SendAndClose(client);
+				return true;
 			}
-			params.NotFoundResponse.Send(client);
-			CloseSocket(client);
+			params.NotFoundResponse.SendAndClose(client);
 			return true;
 		case HttpMethod::PUT:
 		case HttpMethod::DELETE:
@@ -440,15 +502,7 @@ namespace KappaJuko
 		case HttpMethod::OPTIONS:
 		case HttpMethod::TRACE:
 		case HttpMethod::PATCH:
-			std::ostringstream notImplPage{};
-			notImplPage
-				<< "<html><head><title>501</title></head>"
-				<< "<body><h1>Error 501 - " << HttpStatusCodes[501] << "</h1><br/><hr>"
-				<< ServerVersion
-				<< "</body></html>";
-			auto notImpl = Response::FromHtml(notImplPage, 501);
-			notImpl.Finish();
-			notImpl.Send(client);
+			Response::FromStatusCode(501).SendAndClose(client);
 			return true;
 		}
 		return false;
