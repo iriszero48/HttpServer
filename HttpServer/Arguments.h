@@ -168,7 +168,7 @@ namespace ArgumentsParse
 
 #define ArgumentOptionHpp(option, ...)\
 	enum class option { __VA_ARGS__ };\
-	const auto __##option##_map__ = (([&, i = 0](std::string str) mutable\
+	static auto __##option##_map__ = (([&, i = 0](std::string str) mutable\
 	{\
 		str.erase(std::remove(str.begin(), str.end(), ' '), str.end());\
 		std::unordered_map<option, const std::string> res{};\
