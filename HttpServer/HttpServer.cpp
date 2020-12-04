@@ -2,6 +2,7 @@
 #include <unordered_map>
 #include <iostream>
 #include <fstream>
+#include <regex>
 
 #include "HttpServer.h"
 #include "Convert.h"
@@ -57,6 +58,25 @@ namespace KappaJuko
 	                  ServerTiming, SetCookie, SourceMap, HTTPStrictTransportSecurity, TE, TimingAllowOrigin, Tk,
 	                  Trailer, TransferEncoding, UpgradeInsecureRequests, UserAgent, Vary, Via, WWWAuthenticate,
 	                  WantDigest, Warning, XContentTypeOptions, XDNSPrefetchControl, XFrameOptions, XXSSProtection)
+
+	static std::string UrlDecode(const std::string& raw)
+	{
+		std::string res{};
+		for (std::string::size_type i = 0, pos; i < raw.length();)
+		{
+			if ((pos = raw.find('%', i)) == std::string::npos)
+			{
+				res.append(raw, i);
+				break;
+			}
+			res.append(raw, i, pos - i);
+			res.append(1, static_cast<char>(Convert::ToInt(raw.substr(pos + 1, 2), 16)));
+			i = pos + 3;
+		}
+		puts(res.c_str());
+		return res;
+	}
+	
 	Request::Request(const SocketType sock, const sockaddr_in& addr): Client(sock), addr(addr)
 	{
 		int len;
@@ -69,6 +89,7 @@ namespace KappaJuko
 		raw.append(buf);
 		puts(raw.c_str());
 	}
+	
 	HttpMethod Request::Method()
 	{
 		if (!method.has_value())
@@ -79,6 +100,7 @@ namespace KappaJuko
 		}
 		return method.value();
 	}
+	
 	std::filesystem::path Request::Path()
 	{
 		if (!path.has_value())
@@ -87,7 +109,7 @@ namespace KappaJuko
 			const auto offset = rawMethod.length() + 1;
 			rawUrl = raw.substr(offset, raw.find(' ', offset) - offset);
 			queryPos = rawUrl.find('?');
-			path = rawUrl.substr(0, queryPos);
+			path = UrlDecode(rawUrl.substr(1, queryPos - 1));
 		}
 		return path.value();
 	}
@@ -154,6 +176,7 @@ namespace KappaJuko
 	bool Response::Send(const SocketType client)
 	{
 		send(client, headBuf.c_str(), headBuf.length(), 0);
+		puts(headBuf.c_str());
 		if (SendBody.has_value())
 		{
 			SendBody.value()(client);
@@ -168,7 +191,7 @@ namespace KappaJuko
 		return true;
 	}
 
-	Response Response::FromStatusCode(uint16_t statusCode)
+	Response Response::FromStatusCode(const uint16_t statusCode)
 	{
 		std::ostringstream page{};
 		page
@@ -176,7 +199,7 @@ namespace KappaJuko
 			<< "<body><h1>" << statusCode << " - " << HttpStatusCodes[statusCode] << "</h1><br/><hr>"
 			<< ServerVersion
 			<< "</body></html>";
-		auto resp = Response::FromHtml(page, statusCode);
+		auto resp = FromHtml(page, statusCode);
 		resp.Finish();
 		return resp;
 	}
@@ -200,9 +223,14 @@ namespace KappaJuko
 		resp.Headers[HttpHeadersKey::ContentLength] = std::to_string(file_size(path));
 		resp.SendBody = [&](auto client)
 		{
-			char buf[4096]{ 0 };
-			std::ifstream fs(path);
-			fs.read(buf, 4096);
+			std::ifstream fs(path, std::ios_base::in | std::ios_base::binary);
+			char buf[4096];
+			do
+			{
+				fs.read(buf, 4096);
+				send(client, buf, fs.gcount(), 0);
+			}
+			while (!fs.eof());
 		};
 		return resp;
 	}
@@ -433,7 +461,12 @@ namespace KappaJuko
 						}
 						catch (const std::exception& ex)
 						{
-							fputs(ex.what(), stderr);
+							std::ostringstream oss{};
+							std::regex re("::");
+							oss
+								<< "Exception in thread \"" << id << "\" java.lang.NullPointerException: " << ex.what() << "\n"
+								<< "    at " <<  std::regex_replace(__FUNCTION__, re, ".") << "(" << __FILE__ << ":" << MacroLine << ")" << "\n";
+							std::cerr << oss.str();
 						}
 					}
 				}, i);
@@ -469,7 +502,7 @@ namespace KappaJuko
 			{
 				if (is_directory(realPath))
 				{
-					auto pos = std::find_if(
+					const auto pos = std::find_if(
 						params.IndexPages.begin(),
 						params.IndexPages.end(),
 						[&](const auto& index) { return exists(realPath / index); });
