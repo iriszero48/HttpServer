@@ -35,6 +35,12 @@ namespace Convert
 		if (e != std::errc{}) __Convert_ThrowEx__("convert error: invalid literal: ", p);
 		return res;
 	}
+
+	uint64_t ToUint64(const std::string& value, const int base)
+	{
+		char* end;
+		return std::strtoull(value.c_str(), &end, base);
+	}
 	
 	float ToFloat(const std::string& value)
 	{
@@ -44,6 +50,14 @@ namespace Convert
 	double ToDouble(const std::string& value)
 	{
 		return __String_Stream_Convert__<double>(value);
+	}
+	
+	std::string ToString(const uint8_t value, const int base)
+	{
+		char res[65] = { 0 };
+		auto [p, e] = std::to_chars(res, res + 17, value, base);
+		if (e != std::errc{}) __Convert_ThrowEx__("convert error: ", p);
+		return res;
 	}
 
 	std::string ToString(const std::string_view& string)

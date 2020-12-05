@@ -2,7 +2,8 @@
 #include <unordered_map>
 #include <iostream>
 #include <fstream>
-#include <regex>
+#include <queue>
+#include <list>
 
 #include "HttpServer.h"
 #include "Convert.h"
@@ -40,94 +41,157 @@
 
 namespace KappaJuko
 {
-#undef DELETE
-	ArgumentOptionCpp(NetworkIoModel, Blocking, Multiplexing)
-	ArgumentOptionCpp(HttpMethod, GET, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH)
-	ArgumentOptionCpp(HttpHeadersKey, Accept, AcceptCH, AcceptCHLifetime, AcceptCharset, AcceptEncoding, AcceptLanguage,
-	                  AcceptPatch, AcceptRanges, AccessControlAllowCredentials, AccessControlAllowHeaders,
-	                  AccessControlAllowMethods, AccessControlAllowOrigin, AccessControlExposeHeaders,
-	                  AccessControlMaxAge, AccessControlRequestHeaders, AccessControlRequestMethod, Age, Allow, AltSvc,
-	                  Authorization, CacheControl, ClearSiteData, Connection, ContentDisposition, ContentEncoding,
-	                  ContentLanguage, ContentLength, ContentLocation, ContentRange, ContentSecurityPolicy,
-	                  ContentSecurityPolicyReportOnly, ContentType, Cookie, CrossOriginEmbedderPolicy,
-	                  CrossOriginOpenerPolicy, CrossOriginResourcePolicy, DNT, DPR, Date, DeviceMemory, Digest, ETag,
-	                  EarlyData, Expect, ExpectCT, Expires, Forwarded, From, Host, IfMatch, IfModifiedSince,
-	                  IfNoneMatch, IfRange, IfUnmodifiedSince, Index, KeepAlive, LastModified, Link, Location, NEL,
-	                  Origin, ProxyAuthenticate, ProxyAuthorization, Range, Referer, ReferrerPolicy, RetryAfter,
-	                  SaveData, SecFetchDest, SecFetchMode, SecFetchSite, SecFetchUser, SecWebSocketAccept, Server,
-	                  ServerTiming, SetCookie, SourceMap, HTTPStrictTransportSecurity, TE, TimingAllowOrigin, Tk,
-	                  Trailer, TransferEncoding, UpgradeInsecureRequests, UserAgent, Vary, Via, WWWAuthenticate,
-	                  WantDigest, Warning, XContentTypeOptions, XDNSPrefetchControl, XFrameOptions, XXSSProtection)
-
-	static std::string UrlDecode(const std::string& raw)
+	namespace WebUtility
 	{
-		std::string res{};
-		for (std::string::size_type i = 0, pos; i < raw.length();)
+		ArgumentOptionCpp(NetworkIoModel, Blocking, Multiplexing)
+#undef DELETE
+		ArgumentOptionCpp(HttpMethod, GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH)
+		ArgumentOptionCpp(HttpHeadersKey, Accept, AcceptCH, AcceptCHLifetime, AcceptCharset, AcceptEncoding, AcceptLanguage,
+			AcceptPatch, AcceptRanges, AccessControlAllowCredentials, AccessControlAllowHeaders,
+			AccessControlAllowMethods, AccessControlAllowOrigin, AccessControlExposeHeaders,
+			AccessControlMaxAge, AccessControlRequestHeaders, AccessControlRequestMethod, Age, Allow, AltSvc,
+			Authorization, CacheControl, ClearSiteData, Connection, ContentDisposition, ContentEncoding,
+			ContentLanguage, ContentLength, ContentLocation, ContentRange, ContentSecurityPolicy,
+			ContentSecurityPolicyReportOnly, ContentType, Cookie, CrossOriginEmbedderPolicy,
+			CrossOriginOpenerPolicy, CrossOriginResourcePolicy, DNT, DPR, Date, DeviceMemory, Digest, ETag,
+			EarlyData, Expect, ExpectCT, Expires, Forwarded, From, Host, IfMatch, IfModifiedSince,
+			IfNoneMatch, IfRange, IfUnmodifiedSince, Index, KeepAlive, LastModified, Link, Location, NEL,
+			Origin, ProxyAuthenticate, ProxyAuthorization, Range, Referer, ReferrerPolicy, RetryAfter,
+			SaveData, SecFetchDest, SecFetchMode, SecFetchSite, SecFetchUser, SecWebSocketAccept, Server,
+			ServerTiming, SetCookie, SourceMap, HTTPStrictTransportSecurity, TE, TimingAllowOrigin, Tk,
+			Trailer, TransferEncoding, UpgradeInsecureRequests, UserAgent, Vary, Via, WWWAuthenticate,
+			WantDigest, Warning, XContentTypeOptions, XDNSPrefetchControl, XFrameOptions, XXSSProtection)
+		
+		std::string UrlDecode(const std::string& raw)
 		{
-			if ((pos = raw.find('%', i)) == std::string::npos)
+			std::string res{};
+			for (std::string::size_type i = 0, pos; i < raw.length();)
 			{
-				res.append(raw, i);
-				break;
+				if ((pos = raw.find('%', i)) == std::string::npos)
+				{
+					res.append(raw, i);
+					break;
+				}
+				res.append(raw, i, pos - i);
+				res.append(1, static_cast<char>(Convert::ToInt(raw.substr(pos + 1, 2), 16)));
+				i = pos + 3;
 			}
-			res.append(raw, i, pos - i);
-			res.append(1, static_cast<char>(Convert::ToInt(raw.substr(pos + 1, 2), 16)));
-			i = pos + 3;
+			puts(res.c_str());
+			return res;
 		}
-		puts(res.c_str());
-		return res;
+		
+		std::string UrlEncode(const std::string& raw)
+		{
+			std::string res{};
+			auto i = std::string::npos;
+			while (true)
+			{
+				i++;
+				auto beg = raw.begin();
+				std::advance(beg, i);
+				auto pos =
+					std::find_if(
+						beg,
+						raw.end(),
+						[&](const auto& x) { return UrlEncodeTable[static_cast<uint8_t>(x)]; });
+				if (pos == raw.end())
+				{
+					res.append(raw, i);
+					break;
+				}
+				const auto dis = std::distance(beg, pos);
+				res.append(raw, i, dis);
+				res.append("%");
+				res.append(Convert::ToString(static_cast<uint64_t>(*pos), 16));
+				i += dis;
+			}
+			return res;
+		}
 	}
 	
 	Request::Request(const SocketType sock, const sockaddr_in& addr): Client(sock), addr(addr)
 	{
 		int len;
-		char buf[4097]{ 0 };
-		while ((len = recv(Client, buf, 4096, 0)) == 4096)
+		char buf[4097] = { 0 };
+		do
 		{
-			raw.append(buf);
+			len = recv(Client, buf, 4096, 0);
+			buf[len] = 0;
+			Raw.append(buf);
 		}
-		buf[len] = 0;
-		raw.append(buf);
-		puts(raw.c_str());
+		while (len == 4096);
+		puts(Raw.c_str());
 	}
-	
-	HttpMethod Request::Method()
+
+	WebUtility::HttpMethod Request::Method()
 	{
 		if (!method.has_value())
 		{
-			rawMethod = raw.substr(0, raw.find(' '));
+			rawMethod = Raw.substr(0, Raw.find(' '));
 			std::transform(rawMethod.begin(), rawMethod.end(), rawMethod.begin(), static_cast<int(*)(int)>(std::toupper));
-			method = ToHttpMethod(rawMethod);
+			method = WebUtility::ToHttpMethod(rawMethod);
 		}
 		return method.value();
 	}
 	
-	std::filesystem::path Request::Path()
+	std::string Request::Path()
 	{
 		if (!path.has_value())
 		{
 			Method();
 			const auto offset = rawMethod.length() + 1;
-			rawUrl = raw.substr(offset, raw.find(' ', offset) - offset);
+			rawUrl = Raw.substr(offset, Raw.find(' ', offset) - offset);
 			queryPos = rawUrl.find('?');
-			path = UrlDecode(rawUrl.substr(1, queryPos - 1));
+			path = WebUtility::UrlDecode(rawUrl.substr(0, queryPos));
 		}
 		return path.value();
 	}
-	std::string Request::Header(const std::string& param)
+	std::optional<std::string> Request::Header(const WebUtility::HttpHeadersKey& param)
 	{
-		return headerData.value().at(param);
+		if (!headerData.has_value())
+		{
+			headerData = std::map<WebUtility::HttpHeadersKey, std::string>{};
+			auto next = Raw.find('\n');
+			do
+			{
+				next++;
+				const auto pos = Raw.find(':', next);
+				if (pos == std::string::npos)
+				{
+					break;
+				}
+				const auto keyStr = Raw.substr(next, pos - next);
+				auto key =
+					std::find_if(
+						WebUtility::HttpHeaders.begin(),
+						WebUtility::HttpHeaders.end(),
+						[&](const auto& p) { return p.second == keyStr; });
+				
+				if (key != WebUtility::HttpHeaders.end())
+				{
+					next = Raw.find('\n', pos);
+					headerData.value()[key->first] = Raw.substr(pos + 2, next - pos - 3);
+				}
+			} while (next != std::string::npos);
+		}
+		const auto pos = headerData.value().find(param);
+		if (pos == headerData.value().end())
+		{
+			return std::nullopt;
+		}
+		return pos->second;
 	}
-	std::string Request::Get(const std::string& param)
+	std::optional<std::string> Request::Get(const std::string& param)
 	{
 		return getData.value().at(param);
 	}
-	std::string Request::Post(const std::string& param)
+	std::optional<std::string> Request::Post(const std::string& param)
 	{
 		return postData.value().at(param);
 	}
 	Response::Response(const uint16_t statusCode)
 	{
-		head << HttpVersion << " " << statusCode << " " << HttpStatusCodes[statusCode] << "\r\n";
+		head << HttpVersion << " " << statusCode << " " << WebUtility::HttpStatusCodes[statusCode] << "\r\n";
 	}
 	Response::Response(const Response& resp)
 	{
@@ -167,26 +231,35 @@ namespace KappaJuko
 	{
 		for (const auto& [key, value] : Headers)
 		{
-			head << HttpHeaders[key] << ": " << value << "\r\n";
+			head << WebUtility::HttpHeaders[key] << ": " << value << "\r\n";
 		}
 		head << "\r\n";
 		headBuf = head.str();
 	}
-
-	bool Response::Send(const SocketType client)
+	
+	bool Response::SendHead(const SocketType client) const
 	{
 		send(client, headBuf.c_str(), headBuf.length(), 0);
 		puts(headBuf.c_str());
-		if (SendBody.has_value())
+		return true;
+	}
+
+	bool Response::Send(const SocketType client, const bool headOnly)
+	{
+		SendHead(client);
+		if (!headOnly)
 		{
-			SendBody.value()(client);
+			if (SendBody.has_value())
+			{
+				SendBody.value()(client);
+			}
 		}
 		return true;
 	}
 
-	bool Response::SendAndClose(const SocketType client)
+	bool Response::SendAndClose(const SocketType client, const bool headOnly)
 	{
-		Send(client);
+		Send(client, headOnly);
 		CloseSocket(client);
 		return true;
 	}
@@ -196,7 +269,7 @@ namespace KappaJuko
 		std::ostringstream page{};
 		page
 			<< "<html><head><title>" << statusCode << "</title></head>"
-			<< "<body><h1>" << statusCode << " - " << HttpStatusCodes[statusCode] << "</h1><br/><hr>"
+			<< "<body><h1>" << statusCode << " - " << WebUtility::HttpStatusCodes[statusCode] << "</h1><br/><hr>"
 			<< ServerVersion
 			<< "</body></html>";
 		auto resp = FromHtml(page, statusCode);
@@ -208,9 +281,8 @@ namespace KappaJuko
 	{
 		const auto buf = html.str();
 		Response resp(statusCode);
-		resp.Headers[HttpHeadersKey::ContentLength] = std::to_string(buf.length());
-		resp.Headers[HttpHeadersKey::Connection] = "Close";
-		resp.SendBody = [=](auto client)
+		resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(buf.length());
+		resp.SendBody = [=](const auto client)
 		{
 			send(client, buf.c_str(), buf.length(), 0);
 		};
@@ -220,8 +292,8 @@ namespace KappaJuko
 	Response Response::FromFile(const std::filesystem::path& path, const uint16_t statusCode)
 	{
 		Response resp(statusCode);
-		resp.Headers[HttpHeadersKey::ContentLength] = std::to_string(file_size(path));
-		resp.SendBody = [&](auto client)
+		resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(file_size(path));
+		resp.SendBody = [&](const auto client)
 		{
 			std::ifstream fs(path, std::ios_base::in | std::ios_base::binary);
 			char buf[4096];
@@ -243,10 +315,37 @@ namespace KappaJuko
 		Arguments args{};
 #define ArgumentsFunc(arg) [](decltype(arg)::ConvertFuncParamType value) -> decltype(arg)::ConvertResult
 #define ArgumentsValue(arg) args.Value<decltype(arg)::ValueType>(arg)
-		Argument<std::string_view> rootPath
+		Argument<std::filesystem::path> rootPath
 		{
 			"",
-			"root path"
+			"host:path,...(:80:.)",
+			":80:."
+		};
+		Argument<std::unordered_map<std::string_view, std::filesystem::path>> services
+		{
+			"",
+			"host:path,...(:.)",
+			{ { { {}, "." } } },
+			ArgumentsFunc(services)
+			{
+				std::unordered_map<std::string_view, std::filesystem::path> res{};
+				auto comPos = std::string_view::npos;
+				while (true)
+				{
+					comPos++;
+					auto spPos = value.find(':', comPos);
+					const auto host = value.substr(comPos, spPos - comPos);
+					spPos++;
+					comPos = value.find(',', spPos);
+					std::filesystem::path path;
+					if (comPos == std::string_view::npos)
+					{
+						res.emplace(host, value.substr(spPos));
+						return { res, {} };
+					}
+					res.emplace(host, value.substr(spPos, comPos - spPos));
+				}
+			}
 		};
 		Argument<uint16_t> port
 		{
@@ -256,7 +355,7 @@ namespace KappaJuko
 			ArgumentsFunc(port)
 			{
 				return {
-					static_cast<uint16_t>(Compose(Convert::ToString,
+					static_cast<uint16_t>(Compose([](const auto& x) { return std::string(x); },
 					                              std::bind(Convert::ToInt, std::placeholders::_1, 10))(value)),
 					{}
 				};
@@ -270,20 +369,20 @@ namespace KappaJuko
 			ArgumentsFunc(threadCount)
 			{
 				return {
-					static_cast<uint16_t>(Compose(Convert::ToString,
+					static_cast<uint16_t>(Compose([](const auto& x) { return std::string(x); },
 					                              std::bind(Convert::ToInt, std::placeholders::_1, 10))(value)),
 					{}
 				};
 			}
 		};
-		Argument<NetworkIoModel> ioModel
+		Argument<WebUtility::NetworkIoModel> ioModel
 		{
 			"--iomodel",
-			"network IO model " + NetworkIoModelDesc(ToString(NetworkIoModel::Multiplexing)),
-			NetworkIoModel::Multiplexing,
+			"network IO model " + WebUtility::NetworkIoModelDesc(WebUtility::ToString(WebUtility::NetworkIoModel::Multiplexing)),
+			WebUtility::NetworkIoModel::Multiplexing,
 			ArgumentsFunc(ioModel)
 			{
-				return {Compose(Convert::ToString, ToNetworkIoModel)(value), {}};
+				return {Compose([](const auto& x) { return std::string(x); }, WebUtility::ToNetworkIoModel)(value), {}};
 			}
 		};
 		Argument<bool, 0> autoIndexMode
@@ -306,12 +405,12 @@ namespace KappaJuko
 				return {true, {}};
 			}
 		};
-		Argument<std::string_view> charset
-		{
-			"--charset",
-			"charset(utf-8)",
-			"utf-8"
-		};
+		//Argument<std::string_view> charset
+		//{
+		//	"--charset",
+		//	"charset(utf-8)",
+		//	"utf-8"
+		//};
 		Argument<Response> notFoundResponse
 		{
 			"--404",
@@ -339,9 +438,9 @@ namespace KappaJuko
 		Argument<std::vector<std::string_view>> indexPages
 		{
 			"--indexPages",
-			"index pages",
+			"index pages(index.html,index.htm)",
 			{
-				{ "index.html" }
+				{ "index.html", "index.htm" }
 			},
 			ArgumentsFunc(indexPages)
 			{
@@ -363,7 +462,7 @@ namespace KappaJuko
 		args.Add(ioModel);
 		args.Add(autoIndexMode);
 		args.Add(notFoundRedirect);
-		args.Add(charset);
+		//args.Add(charset);
 		args.Add(notFoundResponse);
 		args.Add(forbiddenResponse);
 		args.Add(indexPages);
@@ -378,7 +477,7 @@ namespace KappaJuko
 				ArgumentsValue(ioModel),
 				ArgumentsValue(autoIndexMode),
 				ArgumentsValue(notFoundRedirect),
-				ArgumentsValue(charset),
+				//ArgumentsValue(charset),
 				ArgumentsValue(notFoundResponse),
 				ArgumentsValue(forbiddenResponse),
 				ArgumentsValue(indexPages)
@@ -439,7 +538,7 @@ namespace KappaJuko
 	
 	void HttpServer::Run()
 	{
-		if (params.IoModel == NetworkIoModel::Blocking)
+		if (params.IoModel == WebUtility::NetworkIoModel::Blocking)
 		{
 			threadPool = std::vector<std::thread>();
 			for (auto i = 0; i < params.ThreadCount; ++i)
@@ -459,16 +558,13 @@ namespace KappaJuko
 						{
 							Work(client, clientAddr);
 						}
-						catch (const std::exception& ex)
+						catch (const KappaJukoException& ex)
 						{
-							std::ostringstream oss{};
-							std::regex re("::");
-							oss
+							std::cerr
 								<< "Exception in thread \"" << id << "\" java.lang.NullPointerException: " << ex.what() << "\n"
-								<< "    at " <<  std::regex_replace(__FUNCTION__, re, ".") << "(" << __FILE__ << ":" << MacroLine << ")" << "\n";
-							std::cerr << oss.str();
+								<< "    at " <<  __FUNCTION__ << "(" << __FILE__ << ":" << MacroLine << ")" << "\n";
 						}
-					}
+					}	
 				}, i);
 			}
 		}
@@ -483,9 +579,144 @@ namespace KappaJuko
 		CloseSocket(serverSocket);
 	}
 	
+	bool HttpServer::IndexOfResponse(const std::filesystem::path& path, Request& request, SocketType client,
+		bool headOnly)
+	{
+		const auto indexOfPath = request.Path();
+		std::ostringstream indexOfPage{};
+		indexOfPage <<
+			"<!DOCTYPE html>"
+			"<html>"
+			"<head><title>Index of " << indexOfPath << "</title>"
+			"<meta charset=\"utf-8\"/>"
+			"</head>"
+			"<body>"
+			"<h1>Index of " << indexOfPath << "</h1><hr>";
+
+		//                        filename_utf8 filename_urlencoded 
+		using DirType = std::tuple<std::string, std::string>;
+		using FileType = std::tuple<std::string, std::string, uint64_t>;
+		std::priority_queue<DirType, std::vector<DirType>, std::greater<>> dirs;
+		std::priority_queue<FileType, std::vector<FileType>, std::greater<>> files;
+
+		
+		std::error_code errorCode;
+		const std::error_code nonErrorCode;
+		const std::filesystem::directory_iterator end;
+		for (std::filesystem::directory_iterator file(path, std::filesystem::directory_options::none, errorCode); file != end; ++file)
+		{
+			if (errorCode != nonErrorCode)
+			{
+				params.ForbiddenResponse.SendAndClose(client);
+				//LogErr(file->path().native().c_str(), errorCode.message().c_str());
+				errorCode.clear();
+				return true;
+			}
+			const auto fnu8 = file->path().filename().u8string();
+			const auto fn = WebUtility::UrlEncode(fnu8);
+			if (file->is_regular_file())
+			{
+				files.emplace(fnu8, fn, file->file_size());
+			}
+			else if (file->is_directory())
+			{
+				dirs.emplace(fnu8, fn);
+			}
+		}
+		
+		indexOfPage << "<a href=\"../\">../</a><br/>";
+		while (!dirs.empty())
+		{
+			const auto& [fnu8, fn] = dirs.top();
+			indexOfPage << "<a href=\"" << fn << "/\">" << fnu8 << "/</a><br/>";
+			dirs.pop();
+		}
+		indexOfPage << "<hr>";
+		if (!files.empty())
+		{
+			indexOfPage <<
+				"<table>"
+				"<tr><th>File Name</th><th>Size</th></tr>";
+			while (!files.empty())
+			{
+				const auto& [fnu8, fn, sz] = files.top();
+				indexOfPage << "<tr><td><a href=\"" << fn << "\">" << fnu8 << "</a></td><td align=\"right\">" << sz << "</td></tr>";
+				files.pop();
+			}
+			indexOfPage << "</table>";
+		}
+		indexOfPage << "</body></html>";
+		auto indexOf = Response::FromHtml(indexOfPage);
+		indexOf.Finish();
+		indexOf.SendAndClose(client, headOnly);
+		return true;
+	}
+
+	static bool RangeResponse(const std::filesystem::path& path, SocketType client, const std::string& rangeHeader, const bool headOnly = false)
+	{
+		const auto fileSize = file_size(path);
+		const auto range = rangeHeader.substr(5);
+		std::string::size_type comPos = 0;
+		do
+		{
+			auto spPos = range.find('-', comPos);
+			auto start = Convert::ToUint64(range.substr(comPos + 1, spPos - comPos - 1));
+			comPos = range.find(',', spPos);
+			decltype(start) end;
+			if (comPos == std::string::npos)
+			{
+				if (range.length() - spPos - 1 == 0)
+				{
+					end = fileSize - 1;
+				}
+				else
+				{
+					end = Convert::ToUint64(range.substr(spPos + 2));
+				}
+			}
+			else
+			{
+				end = Convert::ToUint64(range.substr(spPos + 1, comPos - spPos - 1));
+			}
+			const auto diff = end - start + 1;
+			Response resp(206);
+			resp.Headers[WebUtility::HttpHeadersKey::AcceptRanges] = "bytes";
+			resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(diff);
+			std::ostringstream contextRange{};
+			contextRange << "bytes " << start << "-" << end << "/" << fileSize;
+			resp.Headers[WebUtility::HttpHeadersKey::ContentRange] = contextRange.str();
+			resp.SendBody = [=](const auto client)
+			{
+				std::ifstream fs(path, std::ios_base::in | std::ios_base::binary);
+				char buf[4096];
+				decltype(end) count = 0;
+				fs.seekg(start);
+				while (count < diff)
+				{
+#undef min
+					fs.read(buf, std::min(static_cast<decltype(diff)>(4096), diff - count));
+					const auto counted = fs.gcount();
+					send(client, buf, counted, 0);
+					count += counted;
+				}
+			};
+			resp.Finish();
+			resp.Send(client, headOnly);
+		} while (comPos != std::string::npos);
+		CloseSocket(client);
+		return true;
+	}
+	
 	bool HttpServer::Work(const SocketType client, const sockaddr_in& address)
 	{
 		Request req(client, address);
+		if (req.Raw.empty())
+		{
+			char buf[1] = { 0 };
+			send(client, buf, 0, 0);
+			CloseSocket(client);
+			return true;
+		}
 		if (params.CgiHook.has_value())
 		{
 			if (params.CgiHook.value()(req))
@@ -493,48 +724,77 @@ namespace KappaJuko
 				return true;
 			}
 		}
-		auto realPath = params.RootPath / req.Path();
+		const auto rawPath = req.Path();
+		auto realPath =
+			params.RootPath /
+			std::filesystem::u8path(
+				rawPath.substr(
+					std::distance(rawPath.begin(),
+						std::find_if(
+							rawPath.begin(),
+							rawPath.end(),
+							[](const auto& x) {return !(x == '/' || x == '\\'); }))));
+		if (realPath.u8string().find(params.RootPath.u8string()) != 0)
+		{
+			Response::FromStatusCode(400).SendAndClose(client);
+			return true;
+		}
+		bool headOnly;
 		switch (req.Method())
 		{
-		case HttpMethod::GET:
-		case HttpMethod::POST:
+		case WebUtility::HttpMethod::GET:
+		case WebUtility::HttpMethod::POST:
+		case WebUtility::HttpMethod::HEAD:
+			headOnly = req.Method() == WebUtility::HttpMethod::HEAD;
 			if (exists(realPath))
 			{
 				if (is_directory(realPath))
 				{
+					if (params.AutoIndexMode)
+					{
+						return IndexOfResponse(realPath, req, client, headOnly);
+					}
 					const auto pos = std::find_if(
 						params.IndexPages.begin(),
 						params.IndexPages.end(),
 						[&](const auto& index) { return exists(realPath / index); });
 					if (pos == params.IndexPages.end())
 					{
-						if (params.AutoIndexMode)
-						{
-
-						}
-						params.ForbiddenResponse.SendAndClose(client);
+						params.ForbiddenResponse.SendAndClose(client, headOnly);
 						return true;
 					}
 					realPath /= *pos;
 				}
 				if (is_regular_file(realPath))
 				{
+					const auto rawRange = req.Header(WebUtility::HttpHeadersKey::Range);
+					if (rawRange.has_value())
+					{
+						return RangeResponse(realPath, client, rawRange.value(), headOnly);
+					}
 					auto resp = Response::FromFile(realPath);
+					auto ext = realPath.extension().u8string();
+					std::transform(ext.begin(), ext.end(), ext.begin(), static_cast<int(*)(int)>(std::tolower));
+					auto pos = WebUtility::HttpContentType.find(ext);
+					if (pos != WebUtility::HttpContentType.end())
+					{
+						resp.Headers[WebUtility::HttpHeadersKey::ContentType] = pos->second;
+					}
 					resp.Finish();
-					resp.SendAndClose(req.Client);
+					resp.SendAndClose(req.Client, headOnly);
 					return true;
 				}
-				params.ForbiddenResponse.SendAndClose(client);
+				params.ForbiddenResponse.SendAndClose(client, headOnly);
 				return true;
 			}
-			params.NotFoundResponse.SendAndClose(client);
+			params.NotFoundResponse.SendAndClose(client, headOnly);
 			return true;
-		case HttpMethod::PUT:
-		case HttpMethod::DELETE:
-		case HttpMethod::CONNECT:
-		case HttpMethod::OPTIONS:
-		case HttpMethod::TRACE:
-		case HttpMethod::PATCH:
+		case WebUtility::HttpMethod::PUT:
+		case WebUtility::HttpMethod::DELETE:
+		case WebUtility::HttpMethod::CONNECT:
+		case WebUtility::HttpMethod::OPTIONS:
+		case WebUtility::HttpMethod::TRACE:
+		case WebUtility::HttpMethod::PATCH:
 			Response::FromStatusCode(501).SendAndClose(client);
 			return true;
 		}
