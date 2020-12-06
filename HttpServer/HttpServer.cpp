@@ -687,14 +687,11 @@ namespace KappaJuko
 		{
 			indexOfPage <<
 				"<style type=\"text/css\">"
-					"*{"
-						"margin:0;"
-					"}"
-					"img{"
+					"img {"
 						"max-width:399px;"
 						"max-height:399px;"
 					"}"
-					"li{"
+					"li {"
 						"width:399px;"
 						"height:399px;"
 						"float:left;"
