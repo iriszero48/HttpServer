@@ -153,6 +153,7 @@
     <ClInclude Include="Function.h" />
     <ClInclude Include="HttpServer.h" />
     <ClInclude Include="Macro.h" />
+    <ClInclude Include="String.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Arguments.cpp" />

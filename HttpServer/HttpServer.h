@@ -28,7 +28,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.3.0";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.4.0";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -310,6 +310,7 @@ namespace KappaJuko
 		uint16_t ThreadCount = 1;
 		WebUtility::NetworkIoModel IoModel = WebUtility::NetworkIoModel::Multiplexing;
 		bool AutoIndexMode = false;
+		bool ImageBoard = false;
 		bool NotFoundRedirect = false;
 		//std::string_view Charset = "utf-8";
 		Response NotFoundResponse = Response::FromStatusCode(404);
@@ -346,7 +347,7 @@ namespace KappaJuko
 		void Run();
 		void Close() const;
 
-		bool IndexOfResponse(const std::filesystem::path& path, Request& request, SocketType client, bool headOnly = false);
+		bool IndexOf(const std::filesystem::path& path, Request& request, SocketType client, bool imageBoard = false, bool headOnly = false);
 		
 	private:
 		LauncherParams params;

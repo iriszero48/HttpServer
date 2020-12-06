@@ -4,12 +4,14 @@
 #include <fstream>
 #include <queue>
 #include <list>
+#include <unordered_set>
 
 #include "HttpServer.h"
 #include "Convert.h"
 #include "Function.h"
 #include "Exception.h"
 #include "Macro.h"
+#include "String.h"
 
 #ifdef __Kappa_Juko__Windows__
 
@@ -317,7 +319,7 @@ namespace KappaJuko
 #define ArgumentsValue(arg) args.Value<decltype(arg)::ValueType>(arg)
 		Argument<std::filesystem::path> rootPath
 		{
-			"",
+			"-r",
 			"host:path,...(:80:.)",
 			":80:."
 		};
@@ -378,7 +380,7 @@ namespace KappaJuko
 		Argument<WebUtility::NetworkIoModel> ioModel
 		{
 			"--iomodel",
-			"network IO model " + WebUtility::NetworkIoModelDesc(WebUtility::ToString(WebUtility::NetworkIoModel::Multiplexing)),
+			"network IO model " + WebUtility::NetworkIoModelDesc(ToString(WebUtility::NetworkIoModel::Multiplexing)),
 			WebUtility::NetworkIoModel::Multiplexing,
 			ArgumentsFunc(ioModel)
 			{
@@ -389,6 +391,16 @@ namespace KappaJuko
 		{
 			"--autoindex",
 			"auto index mode",
+			false,
+			ArgumentsFunc(autoIndexMode)
+			{
+				return {true, {}};
+			}
+		};
+		Argument<bool, 0> imageBoard
+		{
+			"--imageboard",
+			"auto index mode with image board",
 			false,
 			ArgumentsFunc(autoIndexMode)
 			{
@@ -461,6 +473,7 @@ namespace KappaJuko
 		args.Add(threadCount);
 		args.Add(ioModel);
 		args.Add(autoIndexMode);
+		args.Add(imageBoard);
 		args.Add(notFoundRedirect);
 		//args.Add(charset);
 		args.Add(notFoundResponse);
@@ -469,13 +482,18 @@ namespace KappaJuko
 		try
 		{
 			args.Parse(_args, _argv);
+
+			const auto imageBoardVal = ArgumentsValue(imageBoard);
+			const auto autoIndexModeVal = imageBoardVal ? true : ArgumentsValue(autoIndexMode);
+			
 			return
 			{
 				ArgumentsValue(rootPath),
 				ArgumentsValue(port),
 				ArgumentsValue(threadCount),
 				ArgumentsValue(ioModel),
-				ArgumentsValue(autoIndexMode),
+				autoIndexModeVal,
+				imageBoardVal,
 				ArgumentsValue(notFoundRedirect),
 				//ArgumentsValue(charset),
 				ArgumentsValue(notFoundResponse),
@@ -578,28 +596,16 @@ namespace KappaJuko
 	{
 		CloseSocket(serverSocket);
 	}
-	
-	bool HttpServer::IndexOfResponse(const std::filesystem::path& path, Request& request, SocketType client,
-		bool headOnly)
+
+	static bool IndexOfBody(const std::filesystem::path& path, std::ostringstream& page, bool imageBoard = false)
 	{
-		const auto indexOfPath = request.Path();
-		std::ostringstream indexOfPage{};
-		indexOfPage <<
-			"<!DOCTYPE html>"
-			"<html>"
-			"<head><title>Index of " << indexOfPath << "</title>"
-			"<meta charset=\"utf-8\"/>"
-			"</head>"
-			"<body>"
-			"<h1>Index of " << indexOfPath << "</h1><hr>";
-
-		//                        filename_utf8 filename_urlencoded 
-		using DirType = std::tuple<std::string, std::string>;
-		using FileType = std::tuple<std::string, std::string, uint64_t>;
-		std::priority_queue<DirType, std::vector<DirType>, std::greater<>> dirs;
-		std::priority_queue<FileType, std::vector<FileType>, std::greater<>> files;
-
-		
+		std::unordered_set<std::string_view> imageTypes{".png", ".jpg"};
+		using UrlType = std::string;
+		using Utf8UrlType = std::tuple<std::string, std::string>;
+		using Utf8UrlSizeType = std::tuple<std::string, std::string, uint64_t>;
+		std::priority_queue<Utf8UrlType, std::vector<Utf8UrlType>, std::greater<>> dirs{};
+		std::priority_queue<Utf8UrlSizeType, std::vector<Utf8UrlSizeType>, std::greater<>> files{};
+		std::priority_queue<UrlType, std::vector<UrlType>, std::greater<>> images{};
 		std::error_code errorCode;
 		const std::error_code nonErrorCode;
 		const std::filesystem::directory_iterator end;
@@ -607,15 +613,22 @@ namespace KappaJuko
 		{
 			if (errorCode != nonErrorCode)
 			{
-				params.ForbiddenResponse.SendAndClose(client);
-				//LogErr(file->path().native().c_str(), errorCode.message().c_str());
-				errorCode.clear();
-				return true;
+				return false;
 			}
 			const auto fnu8 = file->path().filename().u8string();
 			const auto fn = WebUtility::UrlEncode(fnu8);
 			if (file->is_regular_file())
 			{
+				if (imageBoard)
+				{
+					auto ext = file->path().extension().u8string();
+					String::ToLower(ext);
+					if (imageTypes.find(ext) != imageTypes.end())
+					{
+						images.emplace(fn);
+						continue;
+					}
+				}
 				files.emplace(fnu8, fn, file->file_size());
 			}
 			else if (file->is_directory())
@@ -623,28 +636,86 @@ namespace KappaJuko
 				dirs.emplace(fnu8, fn);
 			}
 		}
-		
-		indexOfPage << "<a href=\"../\">../</a><br/>";
+
+		page << "<a href=\"../\">../</a><br/>";
 		while (!dirs.empty())
 		{
 			const auto& [fnu8, fn] = dirs.top();
-			indexOfPage << "<a href=\"" << fn << "/\">" << fnu8 << "/</a><br/>";
+			page << "<a href=\"" << fn << "/\">" << fnu8 << "/</a><br/>";
 			dirs.pop();
 		}
-		indexOfPage << "<hr>";
 		if (!files.empty())
 		{
-			indexOfPage <<
+			page <<
+				"<hr>"
 				"<table>"
 				"<tr><th>File Name</th><th>Size</th></tr>";
 			while (!files.empty())
 			{
 				const auto& [fnu8, fn, sz] = files.top();
-				indexOfPage << "<tr><td><a href=\"" << fn << "\">" << fnu8 << "</a></td><td align=\"right\">" << sz << "</td></tr>";
+				page << "<tr><td><a href=\"" << fn << "\">" << fnu8 << "</a></td><td align=\"right\">" << sz << "</td></tr>";
 				files.pop();
 			}
-			indexOfPage << "</table>";
+			page << "</table>";
 		}
+		if (!images.empty())
+		{
+			page <<
+				"<hr>"
+				"<ul>";
+			while (!images.empty())
+			{
+				page << "<li><img src=\"" << images.top() << "\"/></li>";
+				images.pop();
+			}
+			page << "</ul>";
+		}
+		return true;
+	}
+	
+	bool HttpServer::IndexOf(const std::filesystem::path& path, Request& request, SocketType client,
+		bool imageBoard, bool headOnly)
+	{
+		const auto indexOfPath = request.Path();
+		std::ostringstream indexOfPage{};
+		indexOfPage <<
+			"<!DOCTYPE html>"
+			"<html>"
+			"<head><title>Index of " << indexOfPath << "</title>"
+			"<meta charset=\"utf-8\"/>";
+		if (imageBoard)
+		{
+			indexOfPage <<
+				"<style type=\"text/css\">"
+					"*{"
+						"margin:0;"
+					"}"
+					"img{"
+						"max-width:399px;"
+						"max-height:399px;"
+					"}"
+					"li{"
+						"width:399px;"
+						"height:399px;"
+						"float:left;"
+						"margin-left:1px;"
+						"margin-top:1px;"
+						"list-style-type:none;"
+						"text-align:center;"
+					"}"
+				"</style>";
+		}
+		indexOfPage <<
+			"</head>"
+			"<body>"
+			"<h1>Index of " << indexOfPath << "</h1><hr>";
+
+		if (!IndexOfBody(path, indexOfPage, imageBoard))
+		{
+			params.ForbiddenResponse.SendAndClose(client);
+			return true;
+		}
+		
 		indexOfPage << "</body></html>";
 		auto indexOf = Response::FromHtml(indexOfPage);
 		indexOf.Finish();
@@ -739,7 +810,7 @@ namespace KappaJuko
 			Response::FromStatusCode(400).SendAndClose(client);
 			return true;
 		}
-		bool headOnly;
+		auto headOnly = false;
 		switch (req.Method())
 		{
 		case WebUtility::HttpMethod::GET:
@@ -752,7 +823,7 @@ namespace KappaJuko
 				{
 					if (params.AutoIndexMode)
 					{
-						return IndexOfResponse(realPath, req, client, headOnly);
+						return IndexOf(realPath, req, client, params.ImageBoard, headOnly);
 					}
 					const auto pos = std::find_if(
 						params.IndexPages.begin(),
