@@ -95,7 +95,7 @@ namespace KappaJuko
 					std::find_if(
 						beg,
 						raw.end(),
-						[&](const auto& x) { return UrlEncodeTable[static_cast<uint8_t>(x)]; });
+						[&](const char x) { return UrlEncodeTable[static_cast<uint8_t>(x)]; });
 				if (pos == raw.end())
 				{
 					res.append(raw, i);
@@ -130,7 +130,7 @@ namespace KappaJuko
 		if (!method.has_value())
 		{
 			rawMethod = Raw.substr(0, Raw.find(' '));
-			std::transform(rawMethod.begin(), rawMethod.end(), rawMethod.begin(), static_cast<int(*)(int)>(std::toupper));
+			String::ToUpper(rawMethod);
 			method = WebUtility::ToHttpMethod(rawMethod);
 		}
 		return method.value();
@@ -417,12 +417,6 @@ namespace KappaJuko
 				return {true, {}};
 			}
 		};
-		//Argument<std::string_view> charset
-		//{
-		//	"--charset",
-		//	"charset(utf-8)",
-		//	"utf-8"
-		//};
 		Argument<Response> notFoundResponse
 		{
 			"--404",
@@ -475,7 +469,6 @@ namespace KappaJuko
 		args.Add(autoIndexMode);
 		args.Add(imageBoard);
 		args.Add(notFoundRedirect);
-		//args.Add(charset);
 		args.Add(notFoundResponse);
 		args.Add(forbiddenResponse);
 		args.Add(indexPages);
@@ -495,7 +488,6 @@ namespace KappaJuko
 				autoIndexModeVal,
 				imageBoardVal,
 				ArgumentsValue(notFoundRedirect),
-				//ArgumentsValue(charset),
 				ArgumentsValue(notFoundResponse),
 				ArgumentsValue(forbiddenResponse),
 				ArgumentsValue(indexPages)
@@ -842,12 +834,12 @@ namespace KappaJuko
 					}
 					auto resp = Response::FromFile(realPath);
 					auto ext = realPath.extension().u8string();
-					std::transform(ext.begin(), ext.end(), ext.begin(), static_cast<int(*)(int)>(std::tolower));
+					String::ToLower(ext);
 					auto pos = WebUtility::HttpContentType.find(ext);
 					if (pos != WebUtility::HttpContentType.end())
 					{
 						resp.Headers[WebUtility::HttpHeadersKey::ContentType] = pos->second;
-					}
+					} 
 					resp.Finish();
 					resp.SendAndClose(req.Client, headOnly);
 					return true;

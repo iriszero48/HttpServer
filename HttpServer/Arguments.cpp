@@ -1,5 +1,7 @@
 #include "Arguments.h"
 
+#include <algorithm>
+
 #define __Arguments_ToStringFunc__(x) #x
 #define __Arguments_ToString__(x) __Arguments_ToStringFunc__(x)
 #define __Arguments_Line__ __Arguments_ToString__(__LINE__)
@@ -9,12 +11,18 @@ namespace ArgumentsParse
 {
 	std::string Arguments::GetDesc()
 	{
+		std::vector<std::string::size_type> lens{};
+		std::transform(
+			args.begin(),
+			args.end(),
+			std::back_inserter(lens),
+			[](const std::pair<std::string, IArgument*>& x) { return x.first.length(); });
+		const auto maxLen = *std::max_element(lens.begin(), lens.end()) + 1;
 		std::ostringstream ss;
 		for (auto& arg : args)
 		{
 			ss << __Arguments_Combine__(
-				std::string(4, ' '),
-				arg.first, " ",
+				arg.first, std::string(maxLen - arg.first.length(), ' '),
 				arg.second->GetDesc(), "\n");
 		}
 		return ss.str();
@@ -24,7 +32,7 @@ namespace ArgumentsParse
 	{
 		if (argc < 2)
 		{
-			__Arguments_ThrowEx__(argv[0], " [options]\n", GetDesc());
+			__Arguments_ThrowEx__(argv[0], " [options]");
 		}
 #define UnrecognizedOption(...) __Arguments_ThrowEx__("Unrecognized option: ", __VA_ARGS__)
 #define MissingArgument(...) __Arguments_ThrowEx__("Missing argument for option: ", __VA_ARGS__)
