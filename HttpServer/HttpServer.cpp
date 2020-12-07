@@ -650,7 +650,7 @@ namespace KappaJuko
 			while (!files.empty())
 			{
 				const auto& [fnu8, fn, sz] = files.top();
-				page << "<tr><td><a href=\"" << fn << "\">" << fnu8 << "</a></td><td align=\"right\">" << sz << "</td></tr>";
+				page << "<tr><td><a href=\"" << fn << "\">" << fnu8 << "</a></td><td>" << sz << "</td></tr>";
 				files.pop();
 			}
 			page << "</table>";
@@ -679,25 +679,71 @@ namespace KappaJuko
 			"<!DOCTYPE html>"
 			"<html>"
 			"<head><title>Index of " << indexOfPath << "</title>"
-			"<meta charset=\"utf-8\"/>";
+			"<meta charset=\"utf-8\"/>"
+			"<style type=\"text/css\">"
+				"body {"
+					"background: #222;"
+					"color: #ddd;"
+					"font-family: " u8R"("Lato", "Hiragino Sans GB", "Source Han Sans SC", "Source Han Sans CN", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "WenQuanYi Micro Hei", "Î¢ÈíÑÅºÚ", sans-serif;)"
+				"}"
+				"a:link, a:visited {"
+					"color: #6793cf;"
+				"}"
+				"a:hover, a:active, a:focus {"
+					"color: #62bbe7;"
+				"}"
+				"tr td:nth-child(2) {"
+					"text-align: right;"
+				"{"
+			"</style>";
+
 		if (imageBoard)
 		{
 			indexOfPage <<
 				"<style type=\"text/css\">"
 					"img {"
-						"max-width:399px;"
-						"max-height:399px;"
+						"max-width: 100%;"
+						"max-height: 100%;"
 					"}"
 					"li {"
-						"width:399px;"
-						"height:399px;"
-						"float:left;"
-						"margin-left:1px;"
-						"margin-top:1px;"
-						"list-style-type:none;"
-						"text-align:center;"
+						"width: 259px;"
+						"height: 259px;"
+						"float: left;"
+						"margin-left: 1px;"
+						"margin-top: 1px;"
+						"list-style-type: none;"
+						"text-align: center;"
 					"}"
-				"</style>";
+					"#preview {"
+						"background-color: rgba(0, 0, 0, 0.8);"
+						"width: 100%;"
+						"height: 100%;"
+						"position: fixed;"
+						"top: 0;"
+						"left: 0;"
+						"z-index: 100;"
+					"}"
+					"#preview img {"
+						"left: 50%;"
+						"top: 50%;"
+						"transform: translate(-50%, -50%);"
+						"position: relative;"
+					"}"
+				"</style>"
+				"<script type=\"application/javascript\">"
+					"document.onreadystatechange = () =>"
+						"[...document.getElementsByTagName('img')].forEach(x => {"
+							"x.onclick = () => {"
+								"let pv = document.createElement('div');"
+								"pv.id = 'preview';"
+								"pv.onclick = () => document.getElementById('preview').remove();"
+								"let pic = document.createElement('img');"
+								"pic.src = x.src;"
+								"pv.appendChild(pic);"
+								"[...document.getElementsByTagName('body')].forEach(x => x.appendChild(pv));"
+						"};"
+					"});"
+				"</script>";
 		}
 		indexOfPage <<
 			"</head>"
