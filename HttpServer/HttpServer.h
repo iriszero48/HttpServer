@@ -23,12 +23,13 @@
 #else
 
 #include <sys/socket.h>
+#include <netinet/in.h>
 
 #endif
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.4.2";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.4.3";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =

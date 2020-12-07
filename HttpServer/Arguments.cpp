@@ -19,11 +19,11 @@ namespace ArgumentsParse
 			[](const std::pair<std::string, IArgument*>& x) { return x.first.length(); });
 		const auto maxLen = *std::max_element(lens.begin(), lens.end()) + 1;
 		std::ostringstream ss;
-		for (auto& arg : args)
+		for (auto& [k, v] : args)
 		{
 			ss << __Arguments_Combine__(
-				arg.first, std::string(maxLen - arg.first.length(), ' '),
-				arg.second->GetDesc(), "\n");
+				k, std::string(maxLen - k.length(), ' '),
+				v->GetDesc(), "\n");
 		}
 		return ss.str();
 	}

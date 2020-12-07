@@ -24,7 +24,7 @@ T __String_Stream_Convert__(const std::string& string)
 #define __Convert_ToString__(x) __Convert_ToStringFunc__(x)
 #define __Convert_Line__ __Convert_ToString__(__LINE__)
 
-#define __Convert_ThrowEx__(...) throw std::runtime_error(__Arguments_Combine__( __FILE__ ": " __Convert_Line__ ": " __FUNCTION__ ": ", __VA_ARGS__))
+#define __Convert_ThrowEx__(...) throw std::runtime_error(__Arguments_Combine__( __FILE__ ": " __Convert_Line__ ": ", __func__, ": ", __VA_ARGS__))
 
 namespace Convert
 {

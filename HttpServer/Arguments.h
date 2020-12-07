@@ -26,14 +26,28 @@ std::string __Arguments_Combine__(Args&&... args)
 namespace ArgumentsParse
 {
 	using ArgLengthType = std::uint8_t;
+
+	template<ArgLengthType Len>
+	struct SetValueTypeImp
+	{
+		using Type = std::vector<std::string_view>;
+	};
+	
+	template<>
+	struct SetValueTypeImp<1>
+	{
+		using Type = std::string_view;
+	};
+	
+	template<>
+	struct SetValueTypeImp<0>
+	{
+		using Type = std::nullopt_t;
+	};
 	
 	class IArgument
 	{
 	public:
-		template<ArgLengthType Len> struct SetValueTypeImp { using Type = std::vector<std::string_view>; };
-		template<> struct SetValueTypeImp<1> { using Type = std::string_view; };
-		template<> struct SetValueTypeImp<0> { using Type = std::nullopt_t; };
-		
 		using SetValueType = std::variant<SetValueTypeImp<0>::Type, SetValueTypeImp<1>::Type, SetValueTypeImp<2>::Type>;
 
 		IArgument() = default;
@@ -86,11 +100,6 @@ namespace ArgumentsParse
 			desc(std::move(desc)),
 			convert(convert) {}
 
-		//void SetConvertFunc(const ConvertFuncType& func)
-		//{
-		//	convert = func;
-		//}
-		
 		void Set(const SetValueType& value) override
 		{
 			ConvertFuncParamTypeImp valueUnbox = std::get<decltype(valueUnbox)>(value);
@@ -168,7 +177,7 @@ namespace ArgumentsParse
 
 #define ArgumentOptionHpp(option, ...)\
 	enum class option { __VA_ARGS__ };\
-	static auto __##option##_map__ = (([&, i = 0](std::string str) mutable\
+	static auto __##option##_map__ = (([i = 0](std::string str) mutable\
 	{\
 		str.erase(std::remove(str.begin(), str.end(), ' '), str.end());\
 		std::unordered_map<option, const std::string> res{};\

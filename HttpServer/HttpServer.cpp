@@ -24,7 +24,6 @@
 
 #include <arpa/inet.h>
 #include <dirent.h>
-#include <netinet/in.h>
 #include <err.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -95,7 +94,7 @@ namespace KappaJuko
 					std::find_if(
 						beg,
 						raw.end(),
-						[&](const char x) { return UrlEncodeTable[static_cast<uint8_t>(x)]; });
+						[&](const uint8_t x) { return UrlEncodeTable[x]; });
 				if (pos == raw.end())
 				{
 					res.append(raw, i);
@@ -104,7 +103,7 @@ namespace KappaJuko
 				const auto dis = std::distance(beg, pos);
 				res.append(raw, i, dis);
 				res.append("%");
-				res.append(Convert::ToString(static_cast<uint64_t>(*pos), 16));
+				res.append(Convert::ToString(*pos, 16));
 				i += dis;
 			}
 			return res;
@@ -148,6 +147,7 @@ namespace KappaJuko
 		}
 		return path.value();
 	}
+	
 	std::optional<std::string> Request::Header(const WebUtility::HttpHeadersKey& param)
 	{
 		if (!headerData.has_value())
@@ -183,18 +183,22 @@ namespace KappaJuko
 		}
 		return pos->second;
 	}
+	
 	std::optional<std::string> Request::Get(const std::string& param)
 	{
 		return getData.value().at(param);
 	}
+	
 	std::optional<std::string> Request::Post(const std::string& param)
 	{
 		return postData.value().at(param);
 	}
+	
 	Response::Response(const uint16_t statusCode)
 	{
 		head << HttpVersion << " " << statusCode << " " << WebUtility::HttpStatusCodes[statusCode] << "\r\n";
 	}
+	
 	Response::Response(const Response& resp)
 	{
 		SendBody = resp.SendBody;
@@ -202,6 +206,7 @@ namespace KappaJuko
 		head << resp.head.str();
 		headBuf = resp.headBuf;
 	}
+	
 	Response::Response(Response&& resp) noexcept
 	{
 		SendBody = resp.SendBody;
@@ -558,8 +563,8 @@ namespace KappaJuko
 					while (true)
 					{
 						sockaddr_in clientAddr{};
-						int addrLen = sizeof clientAddr;
-						const auto client = accept(serverSocket, reinterpret_cast<sockaddr*>(&clientAddr), &addrLen);
+						auto addrLen = sizeof clientAddr;
+						const auto client = accept(serverSocket, reinterpret_cast<sockaddr*>(&clientAddr), reinterpret_cast<socklen_t*>(&addrLen));
 						if (client <= 0)
 						{
 							continue;
@@ -572,7 +577,7 @@ namespace KappaJuko
 						{
 							std::cerr
 								<< "Exception in thread \"" << id << "\" java.lang.NullPointerException: " << ex.what() << "\n"
-								<< "    at " <<  __FUNCTION__ << "(" << __FILE__ << ":" << MacroLine << ")" << "\n";
+								<< "    at " <<  __func__ << "(" << __FILE__ << ":" << MacroLine << ")" << "\n";
 						}
 					}	
 				}, i);
