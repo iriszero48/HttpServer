@@ -5,7 +5,7 @@
 #include "Convert.h"
 
 template <typename ...Args>
-std::string __Arguments_Combine__(Args&&... args)
+std::string __Convert_Combine__(Args&&... args)
 {
 	std::ostringstream ss{};
 	(ss << ... << args);
@@ -24,7 +24,7 @@ T __String_Stream_Convert__(const std::string& string)
 #define __Convert_ToString__(x) __Convert_ToStringFunc__(x)
 #define __Convert_Line__ __Convert_ToString__(__LINE__)
 
-#define __Convert_ThrowEx__(...) throw std::runtime_error(__Arguments_Combine__( __FILE__ ": " __Convert_Line__ ": ", __func__, ": ", __VA_ARGS__))
+#define __Convert_ThrowEx__(...) throw std::runtime_error(__Convert_Combine__( __FILE__ ": " __Convert_Line__ ": ", __func__, ": ", __VA_ARGS__))
 
 namespace Convert
 {
@@ -50,14 +50,6 @@ namespace Convert
 	double ToDouble(const std::string& value)
 	{
 		return __String_Stream_Convert__<double>(value);
-	}
-	
-	std::string ToString(const uint8_t value, const int base)
-	{
-		char res[65] = { 0 };
-		auto [p, e] = std::to_chars(res, res + 17, value, base);
-		if (e != std::errc{}) __Convert_ThrowEx__("convert error: ", p);
-		return res;
 	}
 
 	std::string ToString(const std::string_view& string)

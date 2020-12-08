@@ -103,9 +103,40 @@ namespace KappaJuko
 				const auto dis = std::distance(beg, pos);
 				res.append(raw, i, dis);
 				res.append("%");
-				res.append(Convert::ToString(*pos, 16));
+				res.append(Convert::ToString<uint8_t>(*pos, 16));
 				i += dis;
 			}
+			return res;
+		}
+
+		decltype(std::chrono::system_clock::to_time_t({})) FileLastModified(const std::filesystem::path& path)
+		{
+			return std::chrono::system_clock::to_time_t(std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+					last_write_time(path)
+					- decltype(std::filesystem::last_write_time({}))::clock::now()
+					+ std::chrono::system_clock::now()));
+		}
+
+		std::string ToGmtString(const decltype(FileLastModified({}))& time)
+		{
+			tm gmt{};
+#ifdef __Kappa_Juko__Windows__
+			gmtime_s
+#else
+			gmtime_r
+#endif
+				(&gmt, &time);
+			std::ostringstream ss{};
+			ss << std::put_time(&gmt, "%a, %d %b %G %T GMT");
+			return ss.str();
+		}
+		
+		std::string ETag(const decltype(FileLastModified({}))& time, const decltype(std::filesystem::file_size({}))& size)
+		{
+			std::string res{};
+			res.append(Convert::ToString(std::chrono::seconds(time).count(), 16));
+			res.append("-");
+			res.append(Convert::ToString(size, 16));
 			return res;
 		}
 	}
@@ -236,6 +267,7 @@ namespace KappaJuko
 
 	void Response::Finish()
 	{
+		Headers[WebUtility::HttpHeadersKey::Date] = WebUtility::ToGmtString(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
 		for (const auto& [key, value] : Headers)
 		{
 			head << WebUtility::HttpHeaders[key] << ": " << value << "\r\n";
@@ -299,7 +331,13 @@ namespace KappaJuko
 	Response Response::FromFile(const std::filesystem::path& path, const uint16_t statusCode)
 	{
 		Response resp(statusCode);
-		resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(file_size(path));
+		const auto fileSize = file_size(path);
+		const auto fileLastModified = WebUtility::FileLastModified(path);
+		resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(fileSize);
+		resp.Headers[WebUtility::HttpHeadersKey::LastModified] = WebUtility::ToGmtString(fileLastModified);
+		resp.Headers[WebUtility::HttpHeadersKey::ETag] = WebUtility::ETag(fileLastModified, fileSize);
+		resp.Headers[WebUtility::HttpHeadersKey::CacheControl] = "max-age=31536000";
+
 		resp.SendBody = [&](const auto client)
 		{
 			std::ifstream fs(path, std::ios_base::in | std::ios_base::binary);
@@ -596,7 +634,7 @@ namespace KappaJuko
 
 	static bool IndexOfBody(const std::filesystem::path& path, std::ostringstream& page, bool imageBoard = false)
 	{
-		std::unordered_set<std::string_view> imageTypes{".png", ".jpg"};
+		std::unordered_set<std::string_view> imageTypes{".png", ".jpg", ".webp"};
 		using UrlType = std::string;
 		using Utf8UrlType = std::tuple<std::string, std::string>;
 		using Utf8UrlSizeType = std::tuple<std::string, std::string, uint64_t>;
@@ -686,6 +724,9 @@ namespace KappaJuko
 					"color: #ddd;"
 					"font-family: " u8R"("Lato", "Hiragino Sans GB", "Source Han Sans SC", "Source Han Sans CN", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "WenQuanYi Micro Hei", "Î¢ÈíÑÅºÚ", sans-serif;)"
 				"}"
+				"a {"
+					"text-decoration: none;"
+				"}"
 				"a:link, a:visited {"
 					"color: #6793cf;"
 				"}"
@@ -701,18 +742,21 @@ namespace KappaJuko
 		{
 			indexOfPage <<
 				"<style type=\"text/css\">"
+					"li {"
+						"width: 260px;"
+						"height: 260px;"
+						"float: left;"
+						"margin-left: 10px;"
+						"margin-top: 10px;"
+						"list-style-type: none;"
+					"}"
 					"img {"
 						"max-width: 100%;"
 						"max-height: 100%;"
-					"}"
-					"li {"
-						"width: 259px;"
-						"height: 259px;"
-						"float: left;"
-						"margin-left: 1px;"
-						"margin-top: 1px;"
-						"list-style-type: none;"
-						"text-align: center;"
+						"position: relative;"
+						"left: 50%;"
+						"top: 50%;"
+						"transform: translate(-50%, -50%);"
 					"}"
 					"#preview {"
 						"background-color: rgba(0, 0, 0, 0.8);"
@@ -878,6 +922,39 @@ namespace KappaJuko
 				}
 				if (is_regular_file(realPath))
 				{
+					const auto ifNoneMatch = req.Header(WebUtility::HttpHeadersKey::IfNoneMatch);
+					const auto ifModified = req.Header(WebUtility::HttpHeadersKey::IfModifiedSince);
+					if (ifNoneMatch.has_value())
+					{
+						if (WebUtility::ETag(WebUtility::FileLastModified(realPath), file_size(realPath)) == ifNoneMatch)
+						{
+							Response resp(304);
+							resp.Headers[WebUtility::HttpHeadersKey::ETag] = ifNoneMatch.value();
+							resp.Headers[WebUtility::HttpHeadersKey::CacheControl] = "max-age=31536000";
+							if (ifModified.has_value())
+							{
+								resp.Headers[WebUtility::HttpHeadersKey::LastModified] = ifModified.value();
+							}
+							resp.Finish();
+							resp.SendHead(client);
+							CloseSocket(client);
+							return true;
+						}
+					}
+					else if (ifModified.has_value())
+					{
+						const auto lm = WebUtility::ToGmtString(WebUtility::FileLastModified(realPath));
+						if (lm == ifModified.value())
+						{
+							Response resp(304);
+							resp.Headers[WebUtility::HttpHeadersKey::LastModified] = ifModified.value();
+							resp.Headers[WebUtility::HttpHeadersKey::CacheControl] = "max-age=31536000";
+							resp.Finish();
+							resp.SendHead(client);
+							CloseSocket(client);
+							return true;
+						}
+					}
 					const auto rawRange = req.Header(WebUtility::HttpHeadersKey::Range);
 					if (rawRange.has_value())
 					{

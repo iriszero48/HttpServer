@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <charconv>
 
 namespace Convert
 {
@@ -12,7 +13,14 @@ namespace Convert
 
 	[[nodiscard]] double ToDouble(const std::string& value);
 
-	[[nodiscard]] std::string ToString(uint8_t value, int base = 10);
+	template<typename T = uint8_t>
+	[[nodiscard]] std::string ToString(const T value, const int base = 10)
+	{
+		char res[65] = { 0 };
+		auto [p, e] = std::to_chars(res, res + 65, value, base);
+		if (e != std::errc{}) throw std::runtime_error("convert error");
+		return res;
+	}
 	
 	[[nodiscard]] std::string ToString(const std::string_view& string);
 }

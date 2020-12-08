@@ -29,7 +29,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.4.4";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.5.0";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -236,6 +236,12 @@ namespace KappaJuko
 		static std::string UrlDecode(const std::string& raw);
 
 		static std::string UrlEncode(const std::string& raw);
+
+		static std::string ToGmtString(const decltype(std::chrono::system_clock::to_time_t({}))& time);
+
+		static decltype(std::chrono::system_clock::to_time_t({})) FileLastModified(const std::filesystem::path& path);
+
+		static std::string ETag(const decltype(FileLastModified({}))& time, const decltype(std::filesystem::file_size({}))& size);
 	}
 
 	class Request
