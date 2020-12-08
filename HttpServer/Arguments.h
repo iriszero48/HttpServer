@@ -174,7 +174,7 @@ namespace ArgumentsParse
 	private:
 		std::unordered_map<std::string, IArgument*> args;
 	};
-
+	
 #define ArgumentOptionHpp(option, ...)\
 	enum class option { __VA_ARGS__ };\
 	static auto __##option##_map__ = (([i = 0](std::string str) mutable\
@@ -187,12 +187,12 @@ namespace ArgumentsParse
 		return res;\
 	})(#__VA_ARGS__));\
 	std::string ToString(const option& in);\
-	option To##option(const std::string& in);\
+	std::optional<option> To##option(const std::string& in);\
 	std::string option##Desc(const std::string& defaultValue = "");
 
 #define ArgumentOptionCpp(option, ...)\
 	std::string ToString(const option& in) { return __##option##_map__.at(in); }\
-	option To##option(const std::string& in) { for (const auto& [k, v] : __##option##_map__) if (v == in) return k; }\
+	std::optional<option> To##option(const std::string& in) { for (const auto& [k, v] : __##option##_map__) if (v == in) return k; return std::nullopt; }\
 	std::string option##Desc(const std::string& defaultValue)\
 	{\
 		std::ostringstream oss{};\

@@ -29,7 +29,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.5.0";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.5.1";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -337,6 +337,7 @@ namespace KappaJuko
 	class RunException : public KappaJukoException { using KappaJukoException::KappaJukoException; };
 	class ResponseException : public RunException { using RunException::RunException; };
 	class RequestException : public RunException { using RunException::RunException; };
+	class RequestParseError : public RequestException { using RequestException::RequestException; };
 	
 	class HttpServer
 	{

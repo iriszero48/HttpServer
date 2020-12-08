@@ -121,11 +121,10 @@ namespace KappaJuko
 		{
 			tm gmt{};
 #ifdef __Kappa_Juko__Windows__
-			gmtime_s
+			gmtime_s(&gmt, &time);
 #else
-			gmtime_r
+			gmtime_r(&time, &gmt);
 #endif
-				(&gmt, &time);
 			std::ostringstream ss{};
 			ss << std::put_time(&gmt, "%a, %d %b %G %T GMT");
 			return ss.str();
@@ -162,6 +161,10 @@ namespace KappaJuko
 			rawMethod = Raw.substr(0, Raw.find(' '));
 			String::ToUpper(rawMethod);
 			method = WebUtility::ToHttpMethod(rawMethod);
+			if (!method.has_value())
+			{
+				KappaJukoThrow(RequestParseError, "Unrecognized Method: ", rawMethod);
+			}
 		}
 		return method.value();
 	}
@@ -615,7 +618,7 @@ namespace KappaJuko
 						{
 							std::cerr
 								<< "Exception in thread \"" << id << "\" java.lang.NullPointerException: " << ex.what() << "\n"
-								<< "    at " <<  __func__ << "(" << __FILE__ << ":" << MacroLine << ")" << "\n";
+								<< "    at " <<  __FUNCSIG__ << "(" << __FILE__ << ":" << MacroLine << ")" << "\n";
 						}
 					}	
 				}, i);
@@ -864,128 +867,136 @@ namespace KappaJuko
 	
 	bool HttpServer::Work(const SocketType client, const sockaddr_in& address)
 	{
-		Request req(client, address);
-		if (req.Raw.empty())
+		try
 		{
-			char buf[1] = { 0 };
-			send(client, buf, 0, 0);
-			CloseSocket(client);
-			return true;
-		}
-		if (params.CgiHook.has_value())
-		{
-			if (params.CgiHook.value()(req))
+			Request req(client, address);
+			if (req.Raw.empty())
 			{
+				char buf[1] = { 0 };
+				send(client, buf, 0, 0);
+				CloseSocket(client);
 				return true;
 			}
-		}
-		const auto rawPath = req.Path();
-		auto realPath =
-			params.RootPath /
-			std::filesystem::u8path(
-				rawPath.substr(
-					std::distance(rawPath.begin(),
-						std::find_if(
-							rawPath.begin(),
-							rawPath.end(),
-							[](const auto& x) {return !(x == '/' || x == '\\'); }))));
-		if (realPath.u8string().find(params.RootPath.u8string()) != 0)
-		{
-			Response::FromStatusCode(400).SendAndClose(client);
-			return true;
-		}
-		auto headOnly = false;
-		switch (req.Method())
-		{
-		case WebUtility::HttpMethod::GET:
-		case WebUtility::HttpMethod::POST:
-		case WebUtility::HttpMethod::HEAD:
-			headOnly = req.Method() == WebUtility::HttpMethod::HEAD;
-			if (exists(realPath))
+			if (params.CgiHook.has_value())
 			{
-				if (is_directory(realPath))
+				if (params.CgiHook.value()(req))
 				{
-					if (params.AutoIndexMode)
-					{
-						return IndexOf(realPath, req, client, params.ImageBoard, headOnly);
-					}
-					const auto pos = std::find_if(
-						params.IndexPages.begin(),
-						params.IndexPages.end(),
-						[&](const auto& index) { return exists(realPath / index); });
-					if (pos == params.IndexPages.end())
-					{
-						params.ForbiddenResponse.SendAndClose(client, headOnly);
-						return true;
-					}
-					realPath /= *pos;
-				}
-				if (is_regular_file(realPath))
-				{
-					const auto ifNoneMatch = req.Header(WebUtility::HttpHeadersKey::IfNoneMatch);
-					const auto ifModified = req.Header(WebUtility::HttpHeadersKey::IfModifiedSince);
-					if (ifNoneMatch.has_value())
-					{
-						if (WebUtility::ETag(WebUtility::FileLastModified(realPath), file_size(realPath)) == ifNoneMatch)
-						{
-							Response resp(304);
-							resp.Headers[WebUtility::HttpHeadersKey::ETag] = ifNoneMatch.value();
-							resp.Headers[WebUtility::HttpHeadersKey::CacheControl] = "max-age=31536000";
-							if (ifModified.has_value())
-							{
-								resp.Headers[WebUtility::HttpHeadersKey::LastModified] = ifModified.value();
-							}
-							resp.Finish();
-							resp.SendHead(client);
-							CloseSocket(client);
-							return true;
-						}
-					}
-					else if (ifModified.has_value())
-					{
-						const auto lm = WebUtility::ToGmtString(WebUtility::FileLastModified(realPath));
-						if (lm == ifModified.value())
-						{
-							Response resp(304);
-							resp.Headers[WebUtility::HttpHeadersKey::LastModified] = ifModified.value();
-							resp.Headers[WebUtility::HttpHeadersKey::CacheControl] = "max-age=31536000";
-							resp.Finish();
-							resp.SendHead(client);
-							CloseSocket(client);
-							return true;
-						}
-					}
-					const auto rawRange = req.Header(WebUtility::HttpHeadersKey::Range);
-					if (rawRange.has_value())
-					{
-						return RangeResponse(realPath, client, rawRange.value(), headOnly);
-					}
-					auto resp = Response::FromFile(realPath);
-					auto ext = realPath.extension().u8string();
-					String::ToLower(ext);
-					auto pos = WebUtility::HttpContentType.find(ext);
-					if (pos != WebUtility::HttpContentType.end())
-					{
-						resp.Headers[WebUtility::HttpHeadersKey::ContentType] = pos->second;
-					} 
-					resp.Finish();
-					resp.SendAndClose(req.Client, headOnly);
 					return true;
 				}
-				params.ForbiddenResponse.SendAndClose(client, headOnly);
+			}
+			const auto rawPath = req.Path();
+			auto realPath =
+				params.RootPath /
+				std::filesystem::u8path(
+					rawPath.substr(
+						std::distance(rawPath.begin(),
+							std::find_if(
+								rawPath.begin(),
+								rawPath.end(),
+								[](const auto& x) {return !(x == '/' || x == '\\'); }))));
+			if (realPath.u8string().find(params.RootPath.u8string()) != 0)
+			{
+				Response::FromStatusCode(400).SendAndClose(client);
 				return true;
 			}
-			params.NotFoundResponse.SendAndClose(client, headOnly);
-			return true;
-		case WebUtility::HttpMethod::PUT:
-		case WebUtility::HttpMethod::DELETE:
-		case WebUtility::HttpMethod::CONNECT:
-		case WebUtility::HttpMethod::OPTIONS:
-		case WebUtility::HttpMethod::TRACE:
-		case WebUtility::HttpMethod::PATCH:
-			Response::FromStatusCode(501).SendAndClose(client);
-			return true;
+			auto headOnly = false;
+			switch (req.Method())
+			{
+			case WebUtility::HttpMethod::GET:
+			case WebUtility::HttpMethod::POST:
+			case WebUtility::HttpMethod::HEAD:
+				headOnly = req.Method() == WebUtility::HttpMethod::HEAD;
+				if (exists(realPath))
+				{
+					if (is_directory(realPath))
+					{
+						if (params.AutoIndexMode)
+						{
+							return IndexOf(realPath, req, client, params.ImageBoard, headOnly);
+						}
+						const auto pos = std::find_if(
+							params.IndexPages.begin(),
+							params.IndexPages.end(),
+							[&](const auto& index) { return exists(realPath / index); });
+						if (pos == params.IndexPages.end())
+						{
+							params.ForbiddenResponse.SendAndClose(client, headOnly);
+							return true;
+						}
+						realPath /= *pos;
+					}
+					if (is_regular_file(realPath))
+					{
+						const auto ifNoneMatch = req.Header(WebUtility::HttpHeadersKey::IfNoneMatch);
+						const auto ifModified = req.Header(WebUtility::HttpHeadersKey::IfModifiedSince);
+						if (ifNoneMatch.has_value())
+						{
+							if (WebUtility::ETag(WebUtility::FileLastModified(realPath), file_size(realPath)) == ifNoneMatch)
+							{
+								Response resp(304);
+								resp.Headers[WebUtility::HttpHeadersKey::ETag] = ifNoneMatch.value();
+								resp.Headers[WebUtility::HttpHeadersKey::CacheControl] = "max-age=31536000";
+								if (ifModified.has_value())
+								{
+									resp.Headers[WebUtility::HttpHeadersKey::LastModified] = ifModified.value();
+								}
+								resp.Finish();
+								resp.SendHead(client);
+								CloseSocket(client);
+								return true;
+							}
+						}
+						else if (ifModified.has_value())
+						{
+							const auto lm = WebUtility::ToGmtString(WebUtility::FileLastModified(realPath));
+							if (lm == ifModified.value())
+							{
+								Response resp(304);
+								resp.Headers[WebUtility::HttpHeadersKey::LastModified] = ifModified.value();
+								resp.Headers[WebUtility::HttpHeadersKey::CacheControl] = "max-age=31536000";
+								resp.Finish();
+								resp.SendHead(client);
+								CloseSocket(client);
+								return true;
+							}
+						}
+						const auto rawRange = req.Header(WebUtility::HttpHeadersKey::Range);
+						if (rawRange.has_value())
+						{
+							return RangeResponse(realPath, client, rawRange.value(), headOnly);
+						}
+						auto resp = Response::FromFile(realPath);
+						auto ext = realPath.extension().u8string();
+						String::ToLower(ext);
+						auto pos = WebUtility::HttpContentType.find(ext);
+						if (pos != WebUtility::HttpContentType.end())
+						{
+							resp.Headers[WebUtility::HttpHeadersKey::ContentType] = pos->second;
+						}
+						resp.Finish();
+						resp.SendAndClose(req.Client, headOnly);
+						return true;
+					}
+					params.ForbiddenResponse.SendAndClose(client, headOnly);
+					return true;
+				}
+				params.NotFoundResponse.SendAndClose(client, headOnly);
+				return true;
+			case WebUtility::HttpMethod::PUT:
+			case WebUtility::HttpMethod::DELETE:
+			case WebUtility::HttpMethod::CONNECT:
+			case WebUtility::HttpMethod::OPTIONS:
+			case WebUtility::HttpMethod::TRACE:
+			case WebUtility::HttpMethod::PATCH:
+				Response::FromStatusCode(501).SendAndClose(client);
+				return true;
+			}
+			return false;
 		}
-		return false;
+		catch (const KappaJukoException& ex)
+		{
+			Response::FromStatusCode(400).SendAndClose(client);
+			throw ex;
+		}
 	}
 }
