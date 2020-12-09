@@ -148,6 +148,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Arguments.h" />
+    <ClInclude Include="Channel.h" />
     <ClInclude Include="Convert.h" />
     <ClInclude Include="Exception.h" />
     <ClInclude Include="Function.h" />
