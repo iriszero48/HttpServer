@@ -5,6 +5,7 @@
 #include <queue>
 #include <list>
 #include <unordered_set>
+#include <iomanip>
 
 #include "HttpServer.h"
 #include "Convert.h"
@@ -32,7 +33,7 @@
 
 #endif
 
-#define KappaJukoThrow(ex, ...) ExceptionThrow(ex, __FILE__ ":" MacroLine ":", __VA_ARGS__)
+#define KappaJukoThrow(ex, ...) ExceptionThrow(ex, __VA_ARGS__, " at ", MacroFunctionName, "(" __FILE__ ":" MacroLine ")")
 
 #ifdef __Kappa_Juko__Windows__
 #define CloseSocket closesocket
@@ -163,6 +164,8 @@ namespace KappaJuko
 			method = WebUtility::ToHttpMethod(rawMethod);
 			if (!method.has_value())
 			{
+				rawMethod.erase(std::remove(rawMethod.begin(), rawMethod.end(), '\r'), rawMethod.end());
+				rawMethod.erase(std::remove(rawMethod.begin(), rawMethod.end(), '\n'), rawMethod.end());
 				KappaJukoThrow(RequestParseError, "Unrecognized Method: ", rawMethod);
 			}
 		}
@@ -174,10 +177,19 @@ namespace KappaJuko
 		if (!path.has_value())
 		{
 			Method();
-			const auto offset = rawMethod.length() + 1;
-			rawUrl = Raw.substr(offset, Raw.find(' ', offset) - offset);
-			queryPos = rawUrl.find('?');
-			path = WebUtility::UrlDecode(rawUrl.substr(0, queryPos));
+			try
+			{
+				const auto offset = rawMethod.length() + 1;
+				rawUrl = Raw.substr(offset, Raw.find(' ', offset) - offset);
+				queryPos = rawUrl.find('?');
+				path = WebUtility::UrlDecode(rawUrl.substr(0, queryPos));
+			}
+			catch (const std::exception& ex)
+			{
+				Raw.erase(std::remove(Raw.begin(), Raw.end(), '\r'), Raw.end());
+				Raw.erase(std::remove(Raw.begin(), Raw.end(), '\n'), Raw.end());
+				KappaJukoThrow(RequestParseError, ex.what(), ": Unrecognized Path: ", rawMethod);
+			}
 		}
 		return path.value();
 	}
@@ -281,22 +293,25 @@ namespace KappaJuko
 	
 	bool Response::SendHead(const SocketType client) const
 	{
-		send(client, headBuf.c_str(), headBuf.length(), 0);
+		if (send(client, headBuf.c_str(), headBuf.length(), 0) <= 0) return false;
 		puts(headBuf.c_str());
 		return true;
 	}
 
 	bool Response::Send(const SocketType client, const bool headOnly)
 	{
-		SendHead(client);
-		if (!headOnly)
+		if (SendHead(client))
 		{
-			if (SendBody.has_value())
+			if (!headOnly)
 			{
-				SendBody.value()(client);
+				if (SendBody.has_value())
+				{
+					SendBody.value()(client);
+				}
 			}
+			return true;
 		}
-		return true;
+		return false;
 	}
 
 	bool Response::SendAndClose(const SocketType client, const bool headOnly)
@@ -326,7 +341,7 @@ namespace KappaJuko
 		resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(buf.length());
 		resp.SendBody = [=](const auto client)
 		{
-			send(client, buf.c_str(), buf.length(), 0);
+			if (send(client, buf.c_str(), buf.length(), 0) <= 0)return;
 		};
 		return resp;
 	}
@@ -348,7 +363,7 @@ namespace KappaJuko
 			do
 			{
 				fs.read(buf, 4096);
-				send(client, buf, fs.gcount(), 0);
+				if (send(client, buf, fs.gcount(), 0) <= 0)return;
 			}
 			while (!fs.eof());
 		};
@@ -618,7 +633,7 @@ namespace KappaJuko
 						{
 							std::cerr
 								<< "Exception in thread \"" << id << "\" java.lang.NullPointerException: " << ex.what() << "\n"
-								<< "    at " <<  __FUNCSIG__ << "(" << __FILE__ << ":" << MacroLine << ")" << "\n";
+								<< "    at " << MacroFunctionName << "(" << __FILE__ << ":" << MacroLine << ")" << "\n";
 						}
 					}	
 				}, i);
@@ -854,7 +869,7 @@ namespace KappaJuko
 #undef min
 					fs.read(buf, std::min(static_cast<decltype(diff)>(4096), diff - count));
 					const auto counted = fs.gcount();
-					send(client, buf, counted, 0);
+					if (send(client, buf, counted, 0) < 0) return;
 					count += counted;
 				}
 			};
@@ -995,8 +1010,8 @@ namespace KappaJuko
 		}
 		catch (const KappaJukoException& ex)
 		{
-			Response::FromStatusCode(400).SendAndClose(client);
-			throw ex;
+			CloseSocket(client);
+			throw;
 		}
 	}
 }

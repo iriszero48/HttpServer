@@ -11,4 +11,12 @@
 #define MacroToString(x) __Macro_ToStringFunc__(x)
 #define MacroLine MacroToString(__LINE__)
 
+#ifdef _MSC_VER
+	#define MacroFunctionName __FUNCSIG__
+#elif defined __GNUC__
+	#define MacroFunctionName __PRETTY_FUNCTION__
+#else
+	#define MacroFunctionName __func__
+#endif
+
 #pragma endregion public
