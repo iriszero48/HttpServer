@@ -9,6 +9,7 @@
 #include <array>
 
 #include "Arguments.h"
+#include "Channel.h"
 
 #if (defined _WIN32 || _WIN64)
 #define __Kappa_Juko__Windows__
@@ -29,7 +30,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.5.3";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.6.0";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -39,6 +40,28 @@ namespace KappaJuko
 		int;
 #endif
 
+	ArgumentOptionHpp(LogLevel, None, Error, Info, Debug)
+
+	class Logger
+	{
+	public:
+		LogLevel Level;
+		std::filesystem::path File;
+		bool Console;
+		
+		Logger(const LogLevel& logLevel, std::filesystem::path logFile, bool console);
+
+		void Debug(const std::string& msg);
+		void Info(const std::string& msg);
+		void Error(const std::string& msg);
+	private:
+		using MsgType = std::tuple<LogLevel, std::string>;
+		Channel<MsgType> chan{};
+		std::thread logThread;
+	};
+	
+	static Logger Log(LogLevel::Info, "", true);
+	
 	namespace WebUtility
 	{
 		ArgumentOptionHpp(NetworkIoModel, Blocking, Multiplexing)
@@ -319,10 +342,13 @@ namespace KappaJuko
 		bool AutoIndexMode = false;
 		bool ImageBoard = false;
 		bool NotFoundRedirect = false;
-		//std::string_view Charset = "utf-8";
 		Response NotFoundResponse = Response::FromStatusCode(404);
 		Response ForbiddenResponse = Response::FromStatusCode(403);
 		std::vector<std::string_view> IndexPages = { "index.html" };
+		std::filesystem::path LogPath = "";
+		LogLevel LogLevel = LogLevel::Info;
+		bool ConsoleLog = true;
+		
 		std::optional<std::function<bool(Request&)>> CgiHook = std::nullopt;
 
 		[[nodiscard]] static LauncherParams FromArgs(int args, char** argv);
@@ -342,7 +368,7 @@ namespace KappaJuko
 	class HttpServer
 	{
 	public:
-		explicit HttpServer(LauncherParams params) : params(std::move(params)) {}
+		explicit HttpServer(LauncherParams params);
 		~HttpServer() = default;
 
 		HttpServer() = delete;

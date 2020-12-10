@@ -6,6 +6,7 @@
 #include <list>
 #include <unordered_set>
 #include <iomanip>
+#include <utility>
 
 #include "HttpServer.h"
 #include "Convert.h"
@@ -33,7 +34,7 @@
 
 #endif
 
-#define KappaJukoThrow(ex, ...) ExceptionThrow(ex, __VA_ARGS__, " at ", MacroFunctionName, "(" __FILE__ ":" MacroLine ")")
+#define KappaJukoThrow(ex, ...) ExceptionThrow(ex, __VA_ARGS__, "\n    at ", MacroFunctionName, "(" __FILE__ ":" MacroLine ")")
 
 #ifdef __Kappa_Juko__Windows__
 #define CloseSocket closesocket
@@ -43,6 +44,8 @@
 
 namespace KappaJuko
 {
+	ArgumentOptionCpp(LogLevel, None, Error, Info)
+	
 	namespace WebUtility
 	{
 		ArgumentOptionCpp(NetworkIoModel, Blocking, Multiplexing)
@@ -78,7 +81,6 @@ namespace KappaJuko
 				res.append(1, static_cast<char>(Convert::ToInt(raw.substr(pos + 1, 2), 16)));
 				i = pos + 3;
 			}
-			puts(res.c_str());
 			return res;
 		}
 		
@@ -152,7 +154,6 @@ namespace KappaJuko
 			Raw.append(buf);
 		}
 		while (len == 4096);
-		puts(Raw.c_str());
 	}
 
 	WebUtility::HttpMethod Request::Method()
@@ -294,7 +295,7 @@ namespace KappaJuko
 	bool Response::SendHead(const SocketType client) const
 	{
 		if (send(client, headBuf.c_str(), headBuf.length(), 0) <= 0) return false;
-		puts(headBuf.c_str());
+		Log.Info(headBuf);
 		return true;
 	}
 
@@ -368,6 +369,68 @@ namespace KappaJuko
 			while (!fs.eof());
 		};
 		return resp;
+	}
+
+	Logger::Logger(const LogLevel& logLevel, std::filesystem::path logFile, const bool console):
+		Level(logLevel), File(std::move(logFile)), Console(console)
+	{
+		logThread = std::thread([&]()
+		{
+			auto opened = false;
+			std::ofstream fs{};
+			while (true)
+			{
+				const auto& [l, s] = chan.Read();
+				if (!opened)
+				{
+					if (File != "")
+					{
+						fs.open(File, std::ios::out | std::ios::binary);
+						opened = true;
+					}
+				}
+				if (l <= Level)
+				{
+					std::string log = "[";
+					log.append(WebUtility::ToGmtString(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())));
+					log.append("] ");
+					log.append("[");
+					log.append(ToString(l));
+					log.append("]\n");
+					log.append(s);
+					if (Console)
+					{
+						if (l == LogLevel::Error)
+						{
+							fputs(log.c_str(), stderr);
+						}
+						else
+						{
+							puts(log.c_str());
+						}
+					}
+					if (opened)
+					{
+						fs << log << "\n";
+					}
+				}
+			}
+		});
+	}
+	
+	void Logger::Debug(const std::string& msg)
+	{
+		chan.Write(MsgType(LogLevel::Debug, msg));
+	}
+	
+	void Logger::Info(const std::string& msg)
+	{
+		chan.Write(MsgType(LogLevel::Info, msg));
+	}
+	
+	void Logger::Error(const std::string& msg)
+	{
+		chan.Write(MsgType(LogLevel::Error, msg));
 	}
 
 	LauncherParams LauncherParams::FromArgs(const int _args, char** _argv)
@@ -563,7 +626,9 @@ namespace KappaJuko
 			exit(EXIT_FAILURE);
 		}
 	}
-	
+
+	HttpServer::HttpServer(LauncherParams params): params(std::move(params)) {}
+
 	void HttpServer::Init()
 	{
 #ifdef __Kappa_Juko__Windows__
@@ -631,9 +696,10 @@ namespace KappaJuko
 						}
 						catch (const KappaJukoException& ex)
 						{
-							std::cerr
-								<< "Exception in thread \"" << id << "\" java.lang.NullPointerException: " << ex.what() << "\n"
+							std::ostringstream oss{};
+							oss	<< "Exception in thread \"" << id << "\" java.lang.NullPointerException: " << ex.what() << "\n"
 								<< "    at " << MacroFunctionName << "(" << __FILE__ << ":" << MacroLine << ")" << "\n";
+							Log.Error(oss.str());
 						}
 					}	
 				}, i);
@@ -740,7 +806,7 @@ namespace KappaJuko
 				"body {"
 					"background: #222;"
 					"color: #ddd;"
-					"font-family: " u8R"("Lato", "Hiragino Sans GB", "Source Han Sans SC", "Source Han Sans CN", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "WenQuanYi Micro Hei", "Î¢ÈíÑÅºÚ", sans-serif;)"
+					"font-family: " u8R"("Lato", "Hiragino Sans GB", "Source Han Sans SC", "Source Han Sans CN", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "WenQuanYi Micro Hei", "å¾®è½¯é›…é»‘", sans-serif;)"
 				"}"
 				"a {"
 					"text-decoration: none;"
@@ -885,6 +951,7 @@ namespace KappaJuko
 		try
 		{
 			Request req(client, address);
+			Log.Info(req.Raw);
 			if (req.Raw.empty())
 			{
 				char buf[1] = { 0 };
@@ -900,6 +967,7 @@ namespace KappaJuko
 				}
 			}
 			const auto rawPath = req.Path();
+			Log.Debug(rawPath);
 			auto realPath =
 				params.RootPath /
 				std::filesystem::u8path(
@@ -1008,7 +1076,7 @@ namespace KappaJuko
 			}
 			return false;
 		}
-		catch (const KappaJukoException& ex)
+		catch (...)
 		{
 			CloseSocket(client);
 			throw;
