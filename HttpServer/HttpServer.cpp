@@ -31,6 +31,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <csignal>
+#include <netdb.h>
 
 #endif
 
@@ -154,6 +155,29 @@ namespace KappaJuko
 			Raw.append(buf);
 		}
 		while (len == 4096);
+	}
+
+	std::string Request::Ip()
+	{
+		if (!ip.has_value())
+		{
+			char host[NI_MAXHOST] = { 0 };
+			getnameinfo((sockaddr*)&addr, sizeof(addr),
+				host, NI_MAXHOST,
+				NULL, 0,
+				NI_NUMERICHOST);
+			ip = host;
+		}
+		return ip.value();
+	}
+
+	std::uint16_t Request::Port()
+	{
+		if (!port.has_value())
+		{
+			port = ntohs(addr.sin_port);
+		}
+		return port.value();
 	}
 
 	WebUtility::HttpMethod Request::Method()
@@ -951,7 +975,15 @@ namespace KappaJuko
 		try
 		{
 			Request req(client, address);
-			Log.Info(req.Raw);
+			if (Log.Level >= LogLevel::Info)
+			{
+				auto info = req.Ip();
+				info.append(":");
+				info.append(Convert::ToString(req.Port()));
+				info.append(" ->\n");
+				info.append(req.Raw);
+				Log.Info(info);
+			}
 			if (req.Raw.empty())
 			{
 				char buf[1] = { 0 };
@@ -1076,9 +1108,14 @@ namespace KappaJuko
 			}
 			return false;
 		}
-		catch (...)
+		catch (const KappaJukoException& ex)
 		{
 			CloseSocket(client);
+			throw;
+		}
+		catch (const std::exception& ex)
+		{
+			Log.Error(std::string("Unknow Error: ") + ex.what());
 			throw;
 		}
 	}

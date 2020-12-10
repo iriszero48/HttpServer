@@ -30,7 +30,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.6.0";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.6.1";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -242,8 +242,8 @@ namespace KappaJuko
 
 		static std::unordered_map<std::string_view, std::string_view> HttpContentType
 		{
-			{u8".mp4", u8"video/mp4"},
-			{u8".wmv", u8"video/x-ms-wmv"}
+			{".mp4", "video/mp4"},
+			{".wmv", "video/x-ms-wmv"}
 		};
 
 		static auto UrlEncodeTable = []()
@@ -274,6 +274,9 @@ namespace KappaJuko
 		std::string Raw{};
 		
 		explicit Request(SocketType sock, const sockaddr_in& addr);
+
+		std::string Ip();
+		std::uint16_t Port();
 
 		WebUtility::HttpMethod Method();
 		std::string Path();
@@ -346,7 +349,7 @@ namespace KappaJuko
 		Response ForbiddenResponse = Response::FromStatusCode(403);
 		std::vector<std::string_view> IndexPages = { "index.html" };
 		std::filesystem::path LogPath = "";
-		LogLevel LogLevel = LogLevel::Info;
+		LogLevel LogFileLevel = LogLevel::Info;
 		bool ConsoleLog = true;
 		
 		std::optional<std::function<bool(Request&)>> CgiHook = std::nullopt;
