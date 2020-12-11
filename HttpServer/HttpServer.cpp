@@ -950,8 +950,6 @@ namespace KappaJuko
 			}
 			if (req.Raw.empty())
 			{
-				char buf[1] = { 0 };
-				send(client, buf, 0, 0);
 				CloseSocket(client);
 				return true;
 			}
