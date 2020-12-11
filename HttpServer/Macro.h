@@ -11,6 +11,10 @@
 #define MacroToString(x) __Macro_ToStringFunc__(x)
 #define MacroLine MacroToString(__LINE__)
 
+#if (defined _WIN32 || _WIN64)
+	#define MacroWindows
+#endif
+
 #ifdef _MSC_VER
 	#define MacroFunctionName __FUNCSIG__
 #elif defined __GNUC__

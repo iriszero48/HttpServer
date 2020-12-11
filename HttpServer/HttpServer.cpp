@@ -14,8 +14,9 @@
 #include "Exception.h"
 #include "Macro.h"
 #include "String.h"
+#include "Time.h"
 
-#ifdef __Kappa_Juko__Windows__
+#ifdef MacroWindows
 
 #include <WS2tcpip.h>
 
@@ -36,12 +37,6 @@
 #endif
 
 #define KappaJukoThrow(ex, ...) ExceptionThrow(ex, __VA_ARGS__, "\n    at ", MacroFunctionName, "(" __FILE__ ":" MacroLine ")")
-
-#ifdef __Kappa_Juko__Windows__
-#define CloseSocket closesocket
-#else
-#define CloseSocket close
-#endif
 
 namespace KappaJuko
 {
@@ -124,11 +119,7 @@ namespace KappaJuko
 		std::string ToGmtString(const decltype(FileLastModified({}))& time)
 		{
 			tm gmt{};
-#ifdef __Kappa_Juko__Windows__
-			gmtime_s(&gmt, &time);
-#else
-			gmtime_r(&time, &gmt);
-#endif
+			Time::Gmt(&gmt, &time);
 			std::ostringstream ss{};
 			ss << std::put_time(&gmt, "%a, %d %b %G %T GMT");
 			return ss.str();
@@ -143,7 +134,7 @@ namespace KappaJuko
 			return res;
 		}
 	}
-	
+
 	Request::Request(const SocketType sock, const sockaddr_in& addr): Client(sock), addr(addr)
 	{
 		int len;
@@ -319,7 +310,7 @@ namespace KappaJuko
 	bool Response::SendHead(const SocketType client) const
 	{
 		if (send(client, headBuf.c_str(), headBuf.length(), 0) <= 0) return false;
-		Log.Info(headBuf);
+		Log.Write("\n", headBuf);
 		return true;
 	}
 
@@ -394,77 +385,23 @@ namespace KappaJuko
 		};
 		return resp;
 	}
-
-	Logger::Logger(const LogLevel& logLevel, std::filesystem::path logFile, const bool console):
-		Level(logLevel), File(std::move(logFile)), Console(console)
-	{
-		logThread = std::thread([&]()
-		{
-			auto opened = false;
-			std::ofstream fs{};
-			while (true)
-			{
-				const auto& [l, s] = chan.Read();
-				if (!opened)
-				{
-					if (File != "")
-					{
-						fs.open(File, std::ios::out | std::ios::binary);
-						opened = true;
-					}
-				}
-				if (l <= Level)
-				{
-					std::string log = "[";
-					log.append(WebUtility::ToGmtString(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())));
-					log.append("] ");
-					log.append("[");
-					log.append(ToString(l));
-					log.append("]\n");
-					log.append(s);
-					if (Console)
-					{
-						if (l == LogLevel::Error)
-						{
-							fputs(log.c_str(), stderr);
-						}
-						else
-						{
-							puts(log.c_str());
-						}
-					}
-					if (opened)
-					{
-						fs << log << "\n";
-					}
-				}
-			}
-		});
-	}
 	
-	void Logger::Debug(const std::string& msg)
-	{
-		chan.Write(MsgType(LogLevel::Debug, msg));
-	}
-	
-	void Logger::Info(const std::string& msg)
-	{
-		chan.Write(MsgType(LogLevel::Info, msg));
-	}
-	
-	void Logger::Error(const std::string& msg)
-	{
-		chan.Write(MsgType(LogLevel::Error, msg));
-	}
-
 	LauncherParams LauncherParams::FromArgs(const int _args, char** _argv)
 	{
+		const auto toString = [](const auto& x) { return std::string(x); };
+		const auto toInt = std::bind(Convert::ToInt, std::placeholders::_1, 10);
+		const auto stringToInt = Function::Compose(toString, toInt);
+		
 		using ArgumentsParse::Arguments;
 		using ArgumentsParse::Argument;
-		using Function::Compose;
 		Arguments args{};
-#define ArgumentsFunc(arg) [](decltype(arg)::ConvertFuncParamType value) -> decltype(arg)::ConvertResult
+#define ArgumentsFunc(arg) [&](decltype(arg)::ConvertFuncParamType value) -> decltype(arg)::ConvertResult
 #define ArgumentsValue(arg) args.Value<decltype(arg)::ValueType>(arg)
+		Argument<std::filesystem::path> configFile
+		{
+			"-c",
+			"config file"
+		};
 		Argument<std::filesystem::path> rootPath
 		{
 			"-r",
@@ -497,21 +434,17 @@ namespace KappaJuko
 				}
 			}
 		};
-		Argument<uint16_t> port
+		Argument<decltype(Port)> port
 		{
 			"-p",
 			"port(80)",
 			80,
 			ArgumentsFunc(port)
 			{
-				return {
-					static_cast<uint16_t>(Compose([](const auto& x) { return std::string(x); },
-					                              std::bind(Convert::ToInt, std::placeholders::_1, 10))(value)),
-					{}
-				};
+				return {static_cast<uint16_t>(stringToInt(value)), {}};
 			}
 		};
-		Argument<uint16_t> threadCount
+		Argument<decltype(ThreadCount)> threadCount
 		{
 			"-t",
 			"work thread count(1)",
@@ -519,23 +452,22 @@ namespace KappaJuko
 			ArgumentsFunc(threadCount)
 			{
 				return {
-					static_cast<uint16_t>(Compose([](const auto& x) { return std::string(x); },
-					                              std::bind(Convert::ToInt, std::placeholders::_1, 10))(value)),
+					static_cast<uint16_t>(stringToInt(value)),
 					{}
 				};
 			}
 		};
-		Argument<WebUtility::NetworkIoModel> ioModel
+		Argument<decltype(IoModel)> ioModel
 		{
 			"--iomodel",
 			"network IO model " + WebUtility::NetworkIoModelDesc(ToString(WebUtility::NetworkIoModel::Multiplexing)),
 			WebUtility::NetworkIoModel::Multiplexing,
 			ArgumentsFunc(ioModel)
 			{
-				return {Compose([](const auto& x) { return std::string(x); }, WebUtility::ToNetworkIoModel)(value), {}};
+				return {Function::Compose(toString, WebUtility::ToNetworkIoModel)(value), {}};
 			}
 		};
-		Argument<bool, 0> autoIndexMode
+		Argument<decltype(AutoIndexMode), 0> autoIndexMode
 		{
 			"--autoindex",
 			"auto index mode",
@@ -545,7 +477,7 @@ namespace KappaJuko
 				return {true, {}};
 			}
 		};
-		Argument<bool, 0> imageBoard
+		Argument<decltype(ImageBoard), 0> imageBoard
 		{
 			"--imageboard",
 			"auto index mode with image board",
@@ -555,7 +487,7 @@ namespace KappaJuko
 				return {true, {}};
 			}
 		};
-		Argument<bool, 0> notFoundRedirect
+		Argument<decltype(NotFoundRedirect), 0> notFoundRedirect
 		{
 			"--redirect",
 			"not found redirect",
@@ -565,7 +497,7 @@ namespace KappaJuko
 				return {true, {}};
 			}
 		};
-		Argument<Response> notFoundResponse
+		Argument<decltype(NotFoundResponse)> notFoundResponse
 		{
 			"--404",
 			"404 page",
@@ -577,7 +509,7 @@ namespace KappaJuko
 				return {resp, {}};
 			}
 		};
-		Argument<Response> forbiddenResponse
+		Argument<decltype(ForbiddenResponse)> forbiddenResponse
 		{
 			"--403",
 			"403 page",
@@ -589,7 +521,7 @@ namespace KappaJuko
 				return {resp, {}};
 			}
 		};
-		Argument<std::vector<std::string_view>> indexPages
+		Argument<decltype(IndexPages)> indexPages
 		{
 			"--indexPages",
 			"index pages(index.html,index.htm)",
@@ -610,6 +542,32 @@ namespace KappaJuko
 				return {res, {}};
 			}
 		};
+		Argument<decltype(LogPath)> logPath
+		{
+			"-l",
+			"log file",
+			""
+		};
+		Argument<decltype(LogFileLevel)> logLevel
+		{
+			"--loglevel",
+			"log level",
+			LogLevel::Info,
+			ArgumentsFunc(logLevel)
+			{
+				return {Function::Compose(toString, ToLogLevel)(value), {}};
+			}
+		};
+		Argument<decltype(ConsoleLog), 0> consoleLog
+		{
+			"--disableconsolelog",
+			"disable console log",
+			true,
+			ArgumentsFunc(consoleLog)
+			{
+				return {false, {}};
+			}
+		};
 		args.Add(rootPath);
 		args.Add(port);
 		args.Add(threadCount);
@@ -620,6 +578,9 @@ namespace KappaJuko
 		args.Add(notFoundResponse);
 		args.Add(forbiddenResponse);
 		args.Add(indexPages);
+		args.Add(logPath);
+		args.Add(logLevel);
+		args.Add(consoleLog);
 		try
 		{
 			args.Parse(_args, _argv);
@@ -638,7 +599,10 @@ namespace KappaJuko
 				ArgumentsValue(notFoundRedirect),
 				ArgumentsValue(notFoundResponse),
 				ArgumentsValue(forbiddenResponse),
-				ArgumentsValue(indexPages)
+				ArgumentsValue(indexPages),
+				ArgumentsValue(logPath),
+				ArgumentsValue(logLevel),
+				ArgumentsValue(consoleLog)
 			};
 		}
 		catch (const std::exception& ex)
@@ -651,11 +615,17 @@ namespace KappaJuko
 		}
 	}
 
-	HttpServer::HttpServer(LauncherParams params): params(std::move(params)) {}
+	HttpServer::HttpServer(LauncherParams params, const std::function<void()>& logThread): params(std::move(params))
+	{
+		Log.Level = this->params.LogFileLevel;
+		Log.File = this->params.LogPath;
+		Log.Console = this->params.ConsoleLog;
+		Log.LogThread = std::thread(logThread);
+	}
 
 	void HttpServer::Init()
 	{
-#ifdef __Kappa_Juko__Windows__
+#ifdef MacroWindows
 		WSADATA wsaData;
 		if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
 		{
@@ -672,7 +642,7 @@ namespace KappaJuko
 		serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		
 		if (serverSocket
-#ifdef __Kappa_Juko__Windows__
+#ifdef MacroWindows
 			== INVALID_SOCKET
 #else
 			== -1
@@ -691,7 +661,7 @@ namespace KappaJuko
 		serverSockAddr.sin_port = htons(params.Port);
 		if (bind(serverSocket, reinterpret_cast<const sockaddr*>(&serverSockAddr), sizeof serverSockAddr) < 0)
 		{
-			KappaJukoThrow(BindPortException, "Can't bind port" );
+			KappaJukoThrow(BindPortException, "Can't bind port ", params.Port);
 		}
 		listen(serverSocket, 10000);
 	}
@@ -720,10 +690,9 @@ namespace KappaJuko
 						}
 						catch (const KappaJukoException& ex)
 						{
-							std::ostringstream oss{};
-							oss	<< "Exception in thread \"" << id << "\" java.lang.NullPointerException: " << ex.what() << "\n"
-								<< "    at " << MacroFunctionName << "(" << __FILE__ << ":" << MacroLine << ")" << "\n";
-							Log.Error(oss.str());
+							Log.Write<LogLevel::Error>(
+								"\nException in thread \"", Convert::ToString(id), "\" java.lang.NullPointerException: ", ex.what(),
+								"\n    at ", MacroFunctionName, "(" __FILE__ ":" MacroLine ")\n");
 						}
 					}	
 				}, i);
@@ -742,7 +711,7 @@ namespace KappaJuko
 
 	static bool IndexOfBody(const std::filesystem::path& path, std::ostringstream& page, bool imageBoard = false)
 	{
-		std::unordered_set<std::string_view> imageTypes{".png", ".jpg", ".webp"};
+		std::unordered_set<std::string_view> imageTypes{".png", ".jpg", ".jpeg", ".webp", ".gif"};
 		using UrlType = std::string;
 		using Utf8UrlType = std::tuple<std::string, std::string>;
 		using Utf8UrlSizeType = std::tuple<std::string, std::string, uint64_t>;
@@ -893,8 +862,8 @@ namespace KappaJuko
 								"pic.src = x.src;"
 								"pv.appendChild(pic);"
 								"[...document.getElementsByTagName('body')].forEach(x => x.appendChild(pv));"
-						"};"
-					"});"
+							"};"
+						"});"
 				"</script>";
 		}
 		indexOfPage <<
@@ -972,17 +941,12 @@ namespace KappaJuko
 	
 	bool HttpServer::Work(const SocketType client, const sockaddr_in& address)
 	{
+		Request req(client, address);
 		try
 		{
-			Request req(client, address);
 			if (Log.Level >= LogLevel::Info)
 			{
-				auto info = req.Ip();
-				info.append(":");
-				info.append(Convert::ToString(req.Port()));
-				info.append(" ->\n");
-				info.append(req.Raw);
-				Log.Info(info);
+				Log.Write(" [", req.Ip(), ":", Convert::ToString(req.Port()), "]\n", req.Raw);
 			}
 			if (req.Raw.empty())
 			{
@@ -999,7 +963,10 @@ namespace KappaJuko
 				}
 			}
 			const auto rawPath = req.Path();
-			Log.Debug(rawPath);
+			if (params.LogFileLevel >= LogLevel::Debug)
+			{
+				Log.Write<LogLevel::Debug>(" [", req.Ip(), ":", Convert::ToString(req.Port()), "]\n", rawPath);
+			}
 			auto realPath =
 				params.RootPath /
 				std::filesystem::u8path(
@@ -1108,15 +1075,52 @@ namespace KappaJuko
 			}
 			return false;
 		}
-		catch (const KappaJukoException& ex)
+		catch (const KappaJukoException&)
 		{
 			CloseSocket(client);
 			throw;
 		}
 		catch (const std::exception& ex)
 		{
-			Log.Error(std::string("Unknow Error: ") + ex.what());
+			Log.Write<LogLevel::Error>(
+				"[", req.Ip(), ":", Convert::ToString(req.Port()), "] [Unknown Error] [", ex.what(), "]\n", req.Raw);
 			throw;
+		}
+	}
+	
+	void HttpServer::DefaultLogThread()
+	{
+		std::ofstream fs{};
+		while (true)
+		{
+			const auto& [l, t, i, s] = Log.Chan.Read();
+			if (l <= Log.Level)
+			{
+				auto time = std::chrono::system_clock::to_time_t(t);
+				tm local{};
+				Time::Local(&local, &time);
+				std::ostringstream buf{};
+				buf << std::put_time(&local, "[%F %X] [") << ToString(l) << "] [" << i << "]";
+				auto log = buf.str();
+				log.append(s);
+				if (Log.Console)
+				{
+					if (l == LogLevel::Error)
+					{
+						fputs(log.c_str(), stderr);
+					}
+					else
+					{
+						puts(log.c_str());
+					}
+				}
+				if (!Log.File.empty())
+				{
+					fs.open(Log.File, std::ios::app | std::ios::binary);
+					fs << log << "\n";
+					fs.close();
+				}
+			}
 		}
 	}
 }

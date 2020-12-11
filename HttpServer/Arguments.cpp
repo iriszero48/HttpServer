@@ -1,6 +1,7 @@
 #include "Arguments.h"
 
 #include <algorithm>
+#include <queue>
 
 #define __Arguments_ToStringFunc__(x) #x
 #define __Arguments_ToString__(x) __Arguments_ToStringFunc__(x)
@@ -11,19 +12,22 @@ namespace ArgumentsParse
 {
 	std::string Arguments::GetDesc()
 	{
+		std::priority_queue<std::string, std::vector<std::string>, std::greater<>> item{};
 		std::vector<std::string::size_type> lens{};
 		std::transform(
 			args.begin(),
 			args.end(),
 			std::back_inserter(lens),
-			[](const std::pair<std::string, IArgument*>& x) { return x.first.length(); });
+			[&](const std::pair<std::string, IArgument*>& x) { item.push(x.first); return x.first.length(); });
 		const auto maxLen = *std::max_element(lens.begin(), lens.end()) + 1;
 		std::ostringstream ss;
-		for (auto& [k, v] : args)
+		while (!item.empty())
 		{
+			const auto i = item.top();
 			ss << __Arguments_Combine__(
-				k, std::string(maxLen - k.length(), ' '),
-				v->GetDesc(), "\n");
+				i, std::string(maxLen - i.length(), ' '),
+				args.at(i)->GetDesc(), "\n");
+			item.pop();
 		}
 		return ss.str();
 	}

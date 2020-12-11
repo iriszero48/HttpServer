@@ -7,17 +7,13 @@
 #include <utility>
 #include <filesystem>
 #include <array>
+#include <future>
 
 #include "Arguments.h"
-#include "Channel.h"
+#include "Thread.h"
+#include "Macro.h"
 
-#if (defined _WIN32 || _WIN64)
-#define __Kappa_Juko__Windows__
-#else
-#define __Kappa_Juko__Linux__
-#endif
-
-#ifdef __Kappa_Juko__Windows__
+#ifdef MacroWindows
 
 #include <WinSock2.h>
 
@@ -28,13 +24,24 @@
 
 #endif
 
+
+#ifdef MacroWindows
+
+#define CloseSocket closesocket
+
+#else
+
+#define CloseSocket close
+
+#endif
+
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.6.1";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.6.2";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
-#ifdef __Kappa_Juko__Windows__
+#ifdef MacroWindows
 		SOCKET;
 #else
 		int;
@@ -45,29 +52,61 @@ namespace KappaJuko
 	class Logger
 	{
 	public:
-		LogLevel Level;
-		std::filesystem::path File;
-		bool Console;
-		
-		Logger(const LogLevel& logLevel, std::filesystem::path logFile, bool console);
+		LogLevel Level = LogLevel::Info;
+		std::filesystem::path File = {};
+		bool Console = true;
 
-		void Debug(const std::string& msg);
-		void Info(const std::string& msg);
-		void Error(const std::string& msg);
+		using MsgType = std::tuple<
+			LogLevel,
+			decltype(std::chrono::system_clock::now()),
+			decltype(std::this_thread::get_id()), std::string>;
+		std::thread LogThread{};
+		Thread::Channel<MsgType> Chan{};
+		
+		template<LogLevel Level = LogLevel::Info, class...Args>
+		void Write(Args&&... args)
+		{
+			WriteImpl<Level>(std::this_thread::get_id(), std::forward<Args>(args)...);
+		}
+
+		template<LogLevel Level = LogLevel::Info, class...Args>
+		std::future<void> WriteAsync(Args&&... args)
+		{
+			return std::async(WriteImpl<Level>, std::launch::async, std::this_thread::get_id(), std::forward<Args>(args)...);
+		}
+		
 	private:
-		using MsgType = std::tuple<LogLevel, std::string>;
-		Channel<MsgType> chan{};
-		std::thread logThread;
+		template<LogLevel Level, class...Args>
+		void WriteImpl(decltype(std::this_thread::get_id()) id, Args&&... args)
+		{
+			std::string msg{};
+			(msg.append(args), ...);
+			Chan.Write(MsgType(Level, std::chrono::system_clock::now(), id, msg));
+		}
 	};
 	
-	static Logger Log(LogLevel::Info, "", true);
+	static Logger Log{};
 	
 	namespace WebUtility
 	{
 		ArgumentOptionHpp(NetworkIoModel, Blocking, Multiplexing)
+		
+#if (defined MacroWindows && DELETE)
+#define WinDeleteDefined
+#endif
+		
+#ifdef WinDeleteDefined
 #undef DELETE
+#endif
+		
 		ArgumentOptionHpp(HttpMethod, GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH)
+		
+#ifdef WinDeleteDefined
 #define DELETE (0x00010000L)
+#endif
+
+#undef WinDeleteDefined
+		
 		ArgumentOptionHpp(HttpHeadersKey, Accept, AcceptCH, AcceptCHLifetime, AcceptCharset, AcceptEncoding, AcceptLanguage,
 			AcceptPatch, AcceptRanges, AccessControlAllowCredentials, AccessControlAllowHeaders,
 			AccessControlAllowMethods, AccessControlAllowOrigin, AccessControlExposeHeaders,
@@ -371,7 +410,7 @@ namespace KappaJuko
 	class HttpServer
 	{
 	public:
-		explicit HttpServer(LauncherParams params);
+		explicit HttpServer(LauncherParams params, const std::function<void()>& logThread = DefaultLogThread);
 		~HttpServer() = default;
 
 		HttpServer() = delete;
@@ -392,5 +431,7 @@ namespace KappaJuko
 		std::vector<std::thread> threadPool = std::vector<std::thread>();
 
 		bool Work(SocketType client, const sockaddr_in& address);
+
+		static void DefaultLogThread();
 	};
 }

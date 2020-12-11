@@ -11,6 +11,10 @@ endif()
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
+if (CMAKE_COMPILER_IS_GNUCXX AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0 AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 8.0)
+    link_libraries(stdc++fs)
+endif()
+
 find_package(Threads REQUIRED)
 
 aux_source_directory(. srcs)

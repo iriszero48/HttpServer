@@ -148,22 +148,23 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Arguments.h" />
-    <ClInclude Include="Channel.h" />
+    <ClInclude Include="Thread.h" />
     <ClInclude Include="Convert.h" />
     <ClInclude Include="Exception.h" />
     <ClInclude Include="Function.h" />
     <ClInclude Include="HttpServer.h" />
     <ClInclude Include="Macro.h" />
     <ClInclude Include="String.h" />
+    <ClInclude Include="Time.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Arguments.cpp" />
     <ClCompile Include="Convert.cpp" />
     <ClCompile Include="HttpServer.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Time.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="ClassDiagram.cd" />
     <None Include="cpp.hint" />
   </ItemGroup>
   <ItemGroup>
