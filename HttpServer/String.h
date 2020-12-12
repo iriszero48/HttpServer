@@ -16,4 +16,10 @@ namespace String
 	{
 		std::transform(string.begin(), string.end(), string.begin(), static_cast<int(*)(int)>(std::tolower));
 	}
+
+	template<class...Args>
+	void StringCombine(std::string& str, Args&&... args)
+	{
+		(str.append(args), ...);
+	}
 }

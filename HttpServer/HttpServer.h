@@ -4,7 +4,6 @@
 #include <map>
 #include <optional>
 #include <thread>
-#include <utility>
 #include <filesystem>
 #include <array>
 #include <future>
@@ -37,7 +36,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.6.3";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.7.0";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -321,6 +320,7 @@ namespace KappaJuko
 		std::string Path();
 		std::optional<std::string> Header(const WebUtility::HttpHeadersKey& param);
 		std::optional<std::string> Get(const std::string& param);
+		std::optional<std::string> Cookie(const std::string& param);
 		std::optional<std::string> Post(const std::string& param);
 	private:
 		sockaddr_in addr;
@@ -335,6 +335,7 @@ namespace KappaJuko
 		std::optional<std::string> path = std::nullopt;
 		std::optional<std::map<WebUtility::HttpHeadersKey, std::string>> headerData = std::nullopt;
 		std::optional<std::map<std::string, std::string>> getData = std::nullopt;
+		std::optional<std::map<std::string, std::string>> cookieData = std::nullopt;
 		std::optional<std::map<std::string, std::string>> postData = std::nullopt;
 		std::optional<WebUtility::HttpMethod> method;
 	};
@@ -364,7 +365,7 @@ namespace KappaJuko
 
 		bool SendAndClose(SocketType client, bool headOnly = false);
 
-		[[nodiscard]] static Response FromStatusCode(uint16_t statusCode);
+		[[nodiscard]] static Response FromStatusCodeHtml(uint16_t statusCode);
 
 		[[nodiscard]] static Response FromHtml(const std::ostringstream& html, uint16_t statusCode = 200);
 
@@ -384,8 +385,8 @@ namespace KappaJuko
 		bool AutoIndexMode = false;
 		bool ImageBoard = false;
 		bool NotFoundRedirect = false;
-		Response NotFoundResponse = Response::FromStatusCode(404);
-		Response ForbiddenResponse = Response::FromStatusCode(403);
+		Response NotFoundResponse = Response::FromStatusCodeHtml(404);
+		Response ForbiddenResponse = Response::FromStatusCodeHtml(403);
 		std::vector<std::string_view> IndexPages = { "index.html" };
 		std::filesystem::path LogPath = "";
 		LogLevel LogFileLevel = LogLevel::Info;

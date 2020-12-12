@@ -148,6 +148,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Arguments.h" />
+    <ClInclude Include="CppServerPages.h" />
     <ClInclude Include="Thread.h" />
     <ClInclude Include="Convert.h" />
     <ClInclude Include="Exception.h" />
@@ -160,6 +161,7 @@
   <ItemGroup>
     <ClCompile Include="Arguments.cpp" />
     <ClCompile Include="Convert.cpp" />
+    <ClCompile Include="CppServerPages.cpp" />
     <ClCompile Include="HttpServer.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Time.cpp" />

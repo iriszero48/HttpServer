@@ -6,7 +6,7 @@
 #include <list>
 #include <unordered_set>
 #include <iomanip>
-#include <utility>
+#include <random>
 
 #include "HttpServer.h"
 #include "Convert.h"
@@ -251,9 +251,69 @@ namespace KappaJuko
 		return getData.value().at(param);
 	}
 	
+	std::optional<std::string> Request::Cookie(const std::string& param)
+	{
+		if (!cookieData.has_value())
+		{
+			const auto rawCookieOpt = Header(WebUtility::HttpHeadersKey::Cookie);
+			if (!rawCookieOpt.has_value())
+			{
+				return std::nullopt;
+			}
+			const auto rawCookie = Header(WebUtility::HttpHeadersKey::Cookie).value();
+			cookieData = std::map<std::string, std::string>{};
+			auto pos = std::string::npos - 1;
+			while (true)
+			{
+				pos += 2;
+				auto i = rawCookie.find('=', pos);
+				auto k = rawCookie.substr(pos, i - pos);
+				pos = rawCookie.find(';', i + 1);
+				i++;
+				if (pos == std::string::npos)
+				{
+					cookieData->emplace(k, rawCookie.substr(i));
+					break;
+				}
+				cookieData->emplace(k, rawCookie.substr(i, pos - i));
+			}
+		}
+		const auto pos = cookieData->find(param);
+		if (pos == cookieData->end())
+		{
+			return std::nullopt;
+		}
+		return pos->second;
+	}
+
 	std::optional<std::string> Request::Post(const std::string& param)
 	{
-		return postData.value().at(param);
+		if (!postData.has_value())
+		{
+			const auto rawPost = Raw.substr(Raw.find("\r\n\r\n") + 4);
+			postData = std::map<std::string, std::string>{};
+			auto pos = std::string::npos;
+			while (true)
+			{
+				pos++;
+				auto i = rawPost.find('=', pos);
+				auto k = rawPost.substr(pos, i - pos);
+				pos = rawPost.find('&', i + 1);
+				i++;
+				if (pos == std::string::npos)
+				{
+					postData->emplace(k, rawPost.substr(i));
+					break;
+				}
+				postData->emplace(k, rawPost.substr(i, pos - i));
+			}
+		}
+		const auto pos = postData->find(param);
+		if (pos == postData->end())
+		{
+			return std::nullopt;
+		}
+		return pos->second;
 	}
 	
 	Response::Response(const uint16_t statusCode)
@@ -337,7 +397,7 @@ namespace KappaJuko
 		return true;
 	}
 
-	Response Response::FromStatusCode(const uint16_t statusCode)
+	Response Response::FromStatusCodeHtml(const uint16_t statusCode)
 	{
 		std::ostringstream page{};
 		page
@@ -501,7 +561,7 @@ namespace KappaJuko
 		{
 			"--404",
 			"404 page",
-			Response::FromStatusCode(404),
+			Response::FromStatusCodeHtml(404),
 			ArgumentsFunc(notFoundResponse)
 			{
 				auto resp = Response::FromFile(Convert::ToString(value), 404);
@@ -513,7 +573,7 @@ namespace KappaJuko
 		{
 			"--403",
 			"403 page",
-			Response::FromStatusCode(403),
+			Response::FromStatusCodeHtml(403),
 			ArgumentsFunc(forbiddenResponse)
 			{
 				auto resp = Response::FromFile(Convert::ToString(value), 403);
@@ -799,7 +859,7 @@ namespace KappaJuko
 				"body {"
 					"background: #222;"
 					"color: #ddd;"
-					"font-family: " u8R"("Lato", "Hiragino Sans GB", "Source Han Sans SC", "Source Han Sans CN", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "WenQuanYi Micro Hei", "微软雅黑", sans-serif;)"
+					"font-family: " R"("Lato", "Hiragino Sans GB", "Source Han Sans SC", "Source Han Sans CN", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "WenQuanYi Micro Hei", "微软雅黑", sans-serif;)"
 				"}"
 				"a {"
 					"text-decoration: none;"
@@ -974,9 +1034,9 @@ namespace KappaJuko
 								rawPath.begin(),
 								rawPath.end(),
 								[](const auto& x) {return !(x == '/' || x == '\\'); }))));
-			if (realPath.u8string().find(params.RootPath.u8string()) != 0)
+			if (realPath.lexically_normal().u8string().find(params.RootPath.lexically_normal().u8string()) != 0)
 			{
-				Response::FromStatusCode(400).SendAndClose(client);
+				Response::FromStatusCodeHtml(400).SendAndClose(client);
 				return true;
 			}
 			auto headOnly = false;
@@ -1040,8 +1100,19 @@ namespace KappaJuko
 								return true;
 							}
 						}
+						auto rangeAllow = true;
+						const auto ifRange = req.Header(WebUtility::HttpHeadersKey::IfRange);
+						if (ifRange.has_value())
+						{
+							const auto last = WebUtility::FileLastModified(realPath);
+							if (WebUtility::ETag(last, file_size(realPath)) != ifRange.value()
+								&& WebUtility::ToGmtString(last) != ifRange.value())
+							{
+								rangeAllow = false;
+							}
+						}
 						const auto rawRange = req.Header(WebUtility::HttpHeadersKey::Range);
-						if (rawRange.has_value())
+						if (rangeAllow && rawRange.has_value())
 						{
 							return RangeResponse(realPath, client, rawRange.value(), headOnly);
 						}
@@ -1068,7 +1139,7 @@ namespace KappaJuko
 			case WebUtility::HttpMethod::OPTIONS:
 			case WebUtility::HttpMethod::TRACE:
 			case WebUtility::HttpMethod::PATCH:
-				Response::FromStatusCode(501).SendAndClose(client);
+				Response::FromStatusCodeHtml(501).SendAndClose(client);
 				return true;
 			}
 			return false;
