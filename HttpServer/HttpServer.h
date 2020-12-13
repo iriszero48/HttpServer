@@ -36,7 +36,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.7.0";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.7.1";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -424,7 +424,7 @@ namespace KappaJuko
 		void Run();
 		void Close() const;
 
-		bool IndexOf(const std::filesystem::path& path, Request& request, SocketType client, bool imageBoard = false, bool headOnly = false);
+		static bool IndexOf(const std::filesystem::path& path, Request& request, Response& forbiddenResponse, bool imageBoard = false, bool headOnly = false);
 		
 	private:
 		LauncherParams params;

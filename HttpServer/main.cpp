@@ -4,10 +4,83 @@
 #include "String.h"
 #include "CppServerPages.h"
 
+//#define FilterTest
+//#define CoffeeTest
+//#define UserTest
+
 int main(const int argc, char* argv[])
 {
 	auto lp = KappaJuko::LauncherParams::FromArgs(argc, argv);
 	
+#ifdef FilterTest
+	static std::vector<std::string_view> allow = { "/f/Library", "/k/Library", "/m/Share" };
+	//static std::vector<std::string_view> allow = { "\Danbooru2018", "\Library" };
+	static std::ostringstream indexPage{};
+	indexPage
+		<< R"(<!DOCTYPE html>
+<html>
+	<head>
+		<title>Index of /</title>
+		<meta charset="utf-8">
+		<style type="text/css">
+			body {background: #222;color: #ddd;font-family: "Lato", "Hiragino Sans GB", "Source Han Sans SC", "Source Han Sans CN", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "WenQuanYi Micro Hei", "Î¢ÈíÑÅºÚ", sans-serif;}
+			a {text-decoration: none;}
+			a:link, a:visited {color: #6793cf;}
+			a:hover, a:active, a:focus {color: #62bbe7;}
+			tr td:nth-child(2) {text-align: right;}
+		</style>
+		<style type="text/css">
+			li {width: 260px;height: 260px;float: left;margin-left: 10px;margin-top: 10px;list-style-type: none;}
+			img {max-width: 100%;max-height: 100%;position: relative;left: 50%;top: 50%;transform: translate(-50%, -50%);}
+			#preview {background-color: rgba(0, 0, 0, 0.8);width: 100%;height: 100%;position: fixed;top: 0;left: 0;z-index: 100;}
+			#preview img {left: 50%;top: 50%;transform: translate(-50%, -50%);position: relative;}
+		</style>
+		<script type="application/javascript">
+			document.onreadystatechange = () =>
+				[...document.getElementsByTagName('img')].forEach(x => {
+					x.onclick = () => {
+						let pv = document.createElement('div');
+						pv.id = 'preview';pv.onclick = () => document.getElementById('preview').remove();
+						let pic = document.createElement('img');
+						pic.src = x.src;
+						pv.appendChild(pic);
+						[...document.getElementsByTagName('body')].forEach(x => x.appendChild(pv));
+					};
+				});
+		</script>
+	</head>
+	<body>
+		<h1>Index of /</h1><hr>)";
+	for (const auto& dir : allow)
+	{
+		indexPage << "<a href=\"" << dir << "/\">" << dir << "/</a><br>";
+	}
+	indexPage << "</body></html>";
+	static auto index = KappaJuko::Response::FromHtml(indexPage);
+	index.Finish();
+	lp.CgiHook = [&](KappaJuko::Request& req)
+	{
+		const auto path = std::filesystem::u8path(req.Path()).lexically_normal().u8string();
+		KappaJuko::Log.Write(" [csp]\n", path);
+		if (path == "/" || path == "\\")
+		{
+			index.SendAndClose(req.Client);
+			return true;
+		}
+		const auto pos = std::find_if(allow.begin(), allow.end(), [&](const auto& x) { return path.find(x) == 0; });
+		if (pos == allow.end())
+		{
+			auto toIndex = KappaJuko::Response(302);
+			toIndex.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/";
+			toIndex.Finish();
+			toIndex.SendAndClose(req.Client);
+			return true;
+		}
+		return false;
+	};
+#endif
+
+#ifdef CoffeeTest
 	std::ostringstream coffeePage{};
 	coffeePage
 		<< "<html><head><title>418</title></head>"
@@ -17,7 +90,18 @@ int main(const int argc, char* argv[])
 		<< "</body></html>";
 	auto coffee = KappaJuko::Response::FromHtml(coffeePage, 418);
 	coffee.Finish();
+	lp.CgiHook = [&](KappaJuko::Request& req)
+	{
+		if (req.Path() == "/coffee.cpp")
+		{
+			coffee.SendAndClose(req.Client);
+			return true;
+		}
+		return false;
+	};
+#endif
 
+#ifdef UserTest
 	std::ostringstream loginPage{};
 	loginPage <<
 		"<!DOCTYPE html>"
@@ -105,10 +189,6 @@ int main(const int argc, char* argv[])
 	
 	std::unordered_map<std::string, std::function<bool(KappaJuko::Request&)>> route
 	{
-		{"/coffee.cpp", [&](KappaJuko::Request& req)
-		{
-			return coffee.SendAndClose(req.Client);
-		}},
 		{"/login.cpp", [&](KappaJuko::Request& req)
 		{
 			const auto sessid = req.Cookie("KJSESSID");
@@ -180,6 +260,7 @@ int main(const int argc, char* argv[])
 						return true;
 					}
 				}
+				
 			}
 			return false;
 		}},
@@ -249,6 +330,7 @@ int main(const int argc, char* argv[])
 		}
 		return false;
 	};
+#endif
 
 	KappaJuko::HttpServer server(lp);
 	server.Init();

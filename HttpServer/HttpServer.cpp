@@ -845,9 +845,10 @@ namespace KappaJuko
 		return true;
 	}
 	
-	bool HttpServer::IndexOf(const std::filesystem::path& path, Request& request, SocketType client,
+	bool HttpServer::IndexOf(const std::filesystem::path& path, Request& request, Response& forbiddenResponse,
 		bool imageBoard, bool headOnly)
 	{
+		const auto client = request.Client;
 		const auto indexOfPath = request.Path();
 		std::ostringstream indexOfPage{};
 		indexOfPage <<
@@ -872,7 +873,7 @@ namespace KappaJuko
 				"}"
 				"tr td:nth-child(2) {"
 					"text-align: right;"
-				"{"
+				"}"
 			"</style>";
 
 		if (imageBoard)
@@ -933,7 +934,7 @@ namespace KappaJuko
 
 		if (!IndexOfBody(path, indexOfPage, imageBoard))
 		{
-			params.ForbiddenResponse.SendAndClose(client);
+			forbiddenResponse.SendAndClose(client);
 			return true;
 		}
 		
@@ -970,30 +971,44 @@ namespace KappaJuko
 			{
 				end = Convert::ToUint64(range.substr(spPos + 1, comPos - spPos - 1));
 			}
-			const auto diff = end - start + 1;
-			Response resp(206);
-			resp.Headers[WebUtility::HttpHeadersKey::AcceptRanges] = "bytes";
-			resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(diff);
-			std::ostringstream contextRange{};
-			contextRange << "bytes " << start << "-" << end << "/" << fileSize;
-			resp.Headers[WebUtility::HttpHeadersKey::ContentRange] = contextRange.str();
-			resp.SendBody = [=](const auto client)
+			if (end >= fileSize)
 			{
-				std::ifstream fs(path, std::ios_base::in | std::ios_base::binary);
-				char buf[4096];
-				decltype(end) count = 0;
-				fs.seekg(start);
-				while (count < diff)
+				Response notSatisfiable(416);
+				std::string cr("*/");
+				cr.append(Convert::ToString(fileSize));
+				notSatisfiable.Headers[WebUtility::HttpHeadersKey::ContentRange] = cr;
+				notSatisfiable.Finish();
+				notSatisfiable.Send(client);
+			}
+			else
+			{
+				const auto diff = end - start + 1;
+				Response resp(206);
+				resp.Headers[WebUtility::HttpHeadersKey::AcceptRanges] = "bytes";
+				resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(diff);
+				std::ostringstream contextRange{};
+				contextRange << "bytes " << start << "-" << end << "/" << fileSize;
+				resp.Headers[WebUtility::HttpHeadersKey::ContentRange] = contextRange.str();
+				resp.SendBody = [=](const auto client)
 				{
+					std::ifstream fs(path, std::ios_base::in | std::ios_base::binary);
+					char buf[4096];
+					decltype(end) count = 0;
+					fs.seekg(start);
+					while (count < diff)
+					{
+#ifdef MacroWindows
 #undef min
-					fs.read(buf, std::min(static_cast<decltype(diff)>(4096), diff - count));
-					const auto counted = fs.gcount();
-					if (send(client, buf, counted, 0) < 0) return;
-					count += counted;
-				}
-			};
-			resp.Finish();
-			resp.Send(client, headOnly);
+#endif
+						fs.read(buf, std::min(static_cast<decltype(diff)>(4096), diff - count));
+						const auto counted = fs.gcount();
+						if (send(client, buf, counted, 0) < 0) return;
+						count += counted;
+					}
+				};
+				resp.Finish();
+				resp.Send(client, headOnly);
+			}
 		} while (comPos != std::string::npos);
 		CloseSocket(client);
 		return true;
@@ -1052,7 +1067,14 @@ namespace KappaJuko
 					{
 						if (params.AutoIndexMode)
 						{
-							return IndexOf(realPath, req, client, params.ImageBoard, headOnly);
+							if (rawPath[rawPath.length() - 1] != '/')
+							{
+								Response moveResp(301);
+								moveResp.Headers[WebUtility::HttpHeadersKey::Location] = rawPath + "/";
+								moveResp.Finish();
+								return moveResp.SendAndClose(client);
+							}
+							return IndexOf(realPath, req, params.ForbiddenResponse, params.ImageBoard, headOnly);
 						}
 						const auto pos = std::find_if(
 							params.IndexPages.begin(),
