@@ -6,6 +6,7 @@
 
 //#define FilterTest
 //#define CoffeeTest
+#define AccessTest
 //#define UserTest
 
 int main(const int argc, char* argv[])
@@ -101,6 +102,10 @@ int main(const int argc, char* argv[])
 	};
 #endif
 
+#ifdef AccessTest
+
+#endif
+
 #ifdef UserTest
 	std::ostringstream loginPage{};
 	loginPage <<
@@ -133,55 +138,6 @@ int main(const int argc, char* argv[])
 				"</form>"
 			"</body>"
 		"</html>";
-
-	std::function<bool(KappaJuko::Request&)> indexCpp = [](KappaJuko::Request& req) -> bool
-	{
-		const auto sessid = req.Cookie("KJSESSID");
-		const auto toLogicWithNewSessid = [&]()
-		{
-			KappaJuko::Response toLogin(302);
-			toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/login.cpp";
-			const auto newSessid = CppServerPages::GenerateSessionId();
-			CppServerPages::Sessions.Set(newSessid, { {}, std::chrono::system_clock::now() });
-			std::string ck{};
-			String::StringCombine(ck, "KJSESSID=", newSessid, "; HttpOnly");
-			toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::SetCookie] = ck;
-			toLogin.Finish();
-			toLogin.Send(req.Client);
-		};
-		if (!sessid.has_value())
-		{
-			toLogicWithNewSessid();
-			return true;
-		}
-		const auto sessidDb = CppServerPages::Sessions.Get(*sessid);
-		if (!sessidDb.has_value())
-		{
-			toLogicWithNewSessid();
-			return true;
-		}
-		if (!sessidDb->User.has_value())
-		{
-			KappaJuko::Response toLogin(302);
-			toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/login.cpp";
-			toLogin.Finish();
-			toLogin.Send(req.Client);
-		}
-		std::ostringstream boardPage{};
-		boardPage <<
-			"<!DOCTYPE html>"
-			"<html>"
-			"<head>"
-				"<title>index.cpp</title>"
-			"</head>"
-				"<body>"
-					"<h1>Hello, " << *sessidDb->User << "!</h1>"
-				"</body>"
-			"</html>";
-		auto board = KappaJuko::Response::FromHtml(boardPage);
-		board.Finish();
-		board.Send(req.Client);
-	};
 
 	CppServerPages::Database<std::string, std::string> userDb{};
 	userDb.Set("root", "toor");
