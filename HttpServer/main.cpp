@@ -13,7 +13,7 @@ int main(const int argc, char* argv[])
 	auto lp = KappaJuko::LauncherParams::FromArgs(argc, argv);
 	
 #ifdef FilterTest
-	static std::vector<std::string_view> allow = { "/f/Library", "/k/Library", "/m/Share" };
+	static std::vector<std::string_view> allow = { "/f", "/k/Library", "/m/Share" };
 	//static std::vector<std::string_view> allow = { "\Danbooru2018", "\Library" };
 	static std::ostringstream indexPage{};
 	indexPage
