@@ -33,6 +33,9 @@
 #include <sys/stat.h>
 #include <csignal>
 #include <netdb.h>
+#include <sys/epoll.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #endif
 
@@ -41,29 +44,29 @@
 namespace KappaJuko
 {
 	ArgumentOptionCpp(LogLevel, None, Error, Info)
-	
-	namespace WebUtility
+
+		namespace WebUtility
 	{
 		ArgumentOptionCpp(NetworkIoModel, Blocking, Multiplexing)
 #undef DELETE
-		ArgumentOptionCpp(HttpMethod, GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH)
-		ArgumentOptionCpp(HttpHeadersKey, Accept, AcceptCH, AcceptCHLifetime, AcceptCharset, AcceptEncoding, AcceptLanguage,
-			AcceptPatch, AcceptRanges, AccessControlAllowCredentials, AccessControlAllowHeaders,
-			AccessControlAllowMethods, AccessControlAllowOrigin, AccessControlExposeHeaders,
-			AccessControlMaxAge, AccessControlRequestHeaders, AccessControlRequestMethod, Age, Allow, AltSvc,
-			Authorization, CacheControl, ClearSiteData, Connection, ContentDisposition, ContentEncoding,
-			ContentLanguage, ContentLength, ContentLocation, ContentRange, ContentSecurityPolicy,
-			ContentSecurityPolicyReportOnly, ContentType, Cookie, CrossOriginEmbedderPolicy,
-			CrossOriginOpenerPolicy, CrossOriginResourcePolicy, DNT, DPR, Date, DeviceMemory, Digest, ETag,
-			EarlyData, Expect, ExpectCT, Expires, Forwarded, From, Host, IfMatch, IfModifiedSince,
-			IfNoneMatch, IfRange, IfUnmodifiedSince, Index, KeepAlive, LastModified, Link, Location, NEL,
-			Origin, ProxyAuthenticate, ProxyAuthorization, Range, Referer, ReferrerPolicy, RetryAfter,
-			SaveData, SecFetchDest, SecFetchMode, SecFetchSite, SecFetchUser, SecWebSocketAccept, Server,
-			ServerTiming, SetCookie, SourceMap, HTTPStrictTransportSecurity, TE, TimingAllowOrigin, Tk,
-			Trailer, TransferEncoding, UpgradeInsecureRequests, UserAgent, Vary, Via, WWWAuthenticate,
-			WantDigest, Warning, XContentTypeOptions, XDNSPrefetchControl, XFrameOptions, XXSSProtection)
-		
-		std::string UrlDecode(const std::string& raw)
+			ArgumentOptionCpp(HttpMethod, GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH)
+			ArgumentOptionCpp(HttpHeadersKey, Accept, AcceptCH, AcceptCHLifetime, AcceptCharset, AcceptEncoding, AcceptLanguage,
+				AcceptPatch, AcceptRanges, AccessControlAllowCredentials, AccessControlAllowHeaders,
+				AccessControlAllowMethods, AccessControlAllowOrigin, AccessControlExposeHeaders,
+				AccessControlMaxAge, AccessControlRequestHeaders, AccessControlRequestMethod, Age, Allow, AltSvc,
+				Authorization, CacheControl, ClearSiteData, Connection, ContentDisposition, ContentEncoding,
+				ContentLanguage, ContentLength, ContentLocation, ContentRange, ContentSecurityPolicy,
+				ContentSecurityPolicyReportOnly, ContentType, Cookie, CrossOriginEmbedderPolicy,
+				CrossOriginOpenerPolicy, CrossOriginResourcePolicy, DNT, DPR, Date, DeviceMemory, Digest, ETag,
+				EarlyData, Expect, ExpectCT, Expires, Forwarded, From, Host, IfMatch, IfModifiedSince,
+				IfNoneMatch, IfRange, IfUnmodifiedSince, Index, KeepAlive, LastModified, Link, Location, NEL,
+				Origin, ProxyAuthenticate, ProxyAuthorization, Range, Referer, ReferrerPolicy, RetryAfter,
+				SaveData, SecFetchDest, SecFetchMode, SecFetchSite, SecFetchUser, SecWebSocketAccept, Server,
+				ServerTiming, SetCookie, SourceMap, HTTPStrictTransportSecurity, TE, TimingAllowOrigin, Tk,
+				Trailer, TransferEncoding, UpgradeInsecureRequests, UserAgent, Vary, Via, WWWAuthenticate,
+				WantDigest, Warning, XContentTypeOptions, XDNSPrefetchControl, XFrameOptions, XXSSProtection)
+
+			std::string UrlDecode(const std::string& raw)
 		{
 			std::string res{};
 			for (std::string::size_type i = 0, pos; i < raw.length();)
@@ -79,7 +82,7 @@ namespace KappaJuko
 			}
 			return res;
 		}
-		
+
 		std::string UrlEncode(const std::string& raw)
 		{
 			std::string res{};
@@ -111,9 +114,9 @@ namespace KappaJuko
 		decltype(std::chrono::system_clock::to_time_t({})) FileLastModified(const std::filesystem::path& path)
 		{
 			return std::chrono::system_clock::to_time_t(std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-					last_write_time(path)
-					- decltype(std::filesystem::last_write_time({}))::clock::now()
-					+ std::chrono::system_clock::now()));
+				last_write_time(path)
+				- decltype(std::filesystem::last_write_time({}))::clock::now()
+				+ std::chrono::system_clock::now()));
 		}
 
 		std::string ToGmtString(const decltype(FileLastModified({}))& time)
@@ -124,7 +127,7 @@ namespace KappaJuko
 			ss << std::put_time(&gmt, "%a, %d %b %G %T GMT");
 			return ss.str();
 		}
-		
+
 		std::string ETag(const decltype(FileLastModified({}))& time, const decltype(std::filesystem::file_size({}))& size)
 		{
 			std::string res{};
@@ -135,7 +138,7 @@ namespace KappaJuko
 		}
 	}
 
-	Request::Request(const SocketType sock, const sockaddr_in& addr): Client(sock), addr(addr)
+	Request::Request(const SocketType sock, const sockaddr_in& addr) : Client(sock), addr(addr)
 	{
 		int len;
 		char buf[4097] = { 0 };
@@ -144,8 +147,7 @@ namespace KappaJuko
 			len = recv(Client, buf, 4096, 0);
 			buf[len] = 0;
 			Raw.append(buf);
-		}
-		while (len == 4096);
+		} while (len == 4096);
 	}
 
 	std::string Request::Ip()
@@ -187,7 +189,7 @@ namespace KappaJuko
 		}
 		return method.value();
 	}
-	
+
 	std::string Request::Path()
 	{
 		if (!path.has_value())
@@ -209,7 +211,7 @@ namespace KappaJuko
 		}
 		return path.value();
 	}
-	
+
 	std::optional<std::string> Request::Header(const WebUtility::HttpHeadersKey& param)
 	{
 		if (!headerData.has_value())
@@ -230,7 +232,7 @@ namespace KappaJuko
 						WebUtility::HttpHeaders.begin(),
 						WebUtility::HttpHeaders.end(),
 						[&](const auto& p) { return p.second == keyStr; });
-				
+
 				if (key != WebUtility::HttpHeaders.end())
 				{
 					next = Raw.find('\n', pos);
@@ -245,12 +247,12 @@ namespace KappaJuko
 		}
 		return pos->second;
 	}
-	
+
 	std::optional<std::string> Request::Get(const std::string& param)
 	{
 		return getData.value().at(param);
 	}
-	
+
 	std::optional<std::string> Request::Cookie(const std::string& param)
 	{
 		if (!cookieData.has_value())
@@ -315,12 +317,12 @@ namespace KappaJuko
 		}
 		return pos->second;
 	}
-	
+
 	Response::Response(const uint16_t statusCode)
 	{
 		head << HttpVersion << " " << statusCode << " " << WebUtility::HttpStatusCodes[statusCode] << "\r\n";
 	}
-	
+
 	Response::Response(const Response& resp)
 	{
 		SendBody = resp.SendBody;
@@ -328,7 +330,7 @@ namespace KappaJuko
 		head << resp.head.str();
 		headBuf = resp.headBuf;
 	}
-	
+
 	Response::Response(Response&& resp) noexcept
 	{
 		SendBody = resp.SendBody;
@@ -346,7 +348,7 @@ namespace KappaJuko
 		headBuf = resp.headBuf;
 		return *this;
 	}
-	
+
 	Response& Response::operator=(Response&& resp) noexcept
 	{
 		SendBody = resp.SendBody;
@@ -366,7 +368,7 @@ namespace KappaJuko
 		head << "\r\n";
 		headBuf = head.str();
 	}
-	
+
 	bool Response::SendHead(const SocketType client) const
 	{
 		if (send(client, headBuf.c_str(), headBuf.length(), 0) <= 0) return false;
@@ -409,7 +411,7 @@ namespace KappaJuko
 		resp.Finish();
 		return resp;
 	}
-	
+
 	Response Response::FromHtml(const std::ostringstream& html, const uint16_t statusCode)
 	{
 		const auto buf = html.str();
@@ -421,7 +423,7 @@ namespace KappaJuko
 		};
 		return resp;
 	}
-	
+
 	Response Response::FromFile(const std::filesystem::path& path, const uint16_t statusCode)
 	{
 		Response resp(statusCode);
@@ -440,18 +442,17 @@ namespace KappaJuko
 			{
 				fs.read(buf, 4096);
 				if (send(client, buf, fs.gcount(), 0) <= 0)return;
-			}
-			while (!fs.eof());
+			} while (!fs.eof());
 		};
 		return resp;
 	}
-	
+
 	LauncherParams LauncherParams::FromArgs(const int _args, char** _argv)
 	{
 		const auto toString = [](const auto& x) { return std::string(x); };
 		const auto toInt = std::bind(Convert::ToInt, std::placeholders::_1, 10);
 		const auto stringToInt = Function::Compose(toString, toInt);
-		
+
 		using ArgumentsParse::Arguments;
 		using ArgumentsParse::Argument;
 		Arguments args{};
@@ -647,7 +648,7 @@ namespace KappaJuko
 
 			const auto imageBoardVal = ArgumentsValue(imageBoard);
 			const auto autoIndexModeVal = imageBoardVal ? true : ArgumentsValue(autoIndexMode);
-			
+
 			return
 			{
 				ArgumentsValue(rootPath),
@@ -675,7 +676,7 @@ namespace KappaJuko
 		}
 	}
 
-	HttpServer::HttpServer(LauncherParams params, const std::function<void()>& logThread): params(std::move(params))
+	HttpServer::HttpServer(LauncherParams params, const std::function<void()>& logThread) : params(std::move(params))
 	{
 		Log.Level = this->params.LogFileLevel;
 		Log.File = this->params.LogPath;
@@ -698,23 +699,23 @@ namespace KappaJuko
 		action.sa_flags = 0;
 		sigaction(SIGPIPE, &action, nullptr);
 #endif
-		
+
 		serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-		
+
 		if (serverSocket
 #ifdef MacroWindows
 			== INVALID_SOCKET
 #else
 			== -1
 #endif
-		)
+			)
 		{
 			KappaJukoThrow(CreateSocketException, "Can't create socket");
 		}
-		
-		char optVal[4] = {0};
+
+		char optVal[4] = { 0 };
 		setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, optVal, sizeof optVal);
-		
+
 		sockaddr_in serverSockAddr{};
 		serverSockAddr.sin_family = AF_INET;
 		serverSockAddr.sin_addr.s_addr = INADDR_ANY;
@@ -725,7 +726,7 @@ namespace KappaJuko
 		}
 		listen(serverSocket, 10000);
 	}
-	
+
 	void HttpServer::Run()
 	{
 		if (params.IoModel == WebUtility::NetworkIoModel::Blocking)
@@ -754,16 +755,52 @@ namespace KappaJuko
 								"\nException in thread \"", Convert::ToString(id), "\" java.lang.NullPointerException: ", ex.what(),
 								"\n    at ", MacroFunctionName, "(" __FILE__ ":" MacroLine ")\n");
 						}
-					}	
+					}
 				}, i);
 			}
+		}
+		else if (params.IoModel == WebUtility::NetworkIoModel::Multiplexing)
+		{
+#ifdef MacroWindows
+#else
+			epoll_event events[4096];
+			auto epollFd = epoll_create(4096);
+			auto addEvent = [&](decltype(serverSocket) sock, decltype(events[0].events) status)
+			{
+				epoll_event ev;
+				ev.events = status;
+				ev.data.fd = sock;
+				epoll_ctl(epollFd, EPOLL_CTL_ADD, sock, &ev);
+			};
+			while (true)
+			{
+				auto res = epoll_wait(epollFd, events, 4096, -1);
+				for (decltype(res) i = 0; i < res; ++i)
+				{
+					auto fd = events[i].data.fd;
+					if (fd == serverSocket && (events[i].events & EPOLLIN))
+					{
+						sockaddr_in clientAddr{};
+						auto addrLen = sizeof clientAddr;
+						const auto client = accept(serverSocket, reinterpret_cast<sockaddr*>(&clientAddr), reinterpret_cast<socklen_t*>(&addrLen));
+						if (client <= 0) continue;
+						fcntl(client, F_SETFL, fcntl(client, F_GETFL) | O_NONBLOCK);
+						addEvent(client, EPOLLIN | EPOLLET);
+					}
+					else if (events[i].events & EPOLLIN)
+					{
+
+					}
+				}
+			}
+#endif
 		}
 		for (auto& thread : threadPool)
 		{
 			thread.join();
 		}
 	}
-	
+
 	void HttpServer::Close() const
 	{
 		CloseSocket(serverSocket);
@@ -771,7 +808,7 @@ namespace KappaJuko
 
 	static bool IndexOfBody(const std::filesystem::path& path, std::ostringstream& page, bool imageBoard = false)
 	{
-		std::unordered_set<std::string_view> imageTypes{".png", ".jpg", ".jpeg", ".webp", ".gif"};
+		std::unordered_set<std::string_view> imageTypes{ ".png", ".jpg", ".jpeg", ".webp", ".gif" };
 		using UrlType = std::string;
 		using Utf8UrlType = std::tuple<std::string, std::string>;
 		using Utf8UrlSizeType = std::tuple<std::string, std::string, uint64_t>;
@@ -844,7 +881,7 @@ namespace KappaJuko
 		}
 		return true;
 	}
-	
+
 	bool HttpServer::IndexOf(const std::filesystem::path& path, Request& request, Response& forbiddenResponse,
 		bool imageBoard, bool headOnly)
 	{
@@ -857,74 +894,74 @@ namespace KappaJuko
 			"<head><title>Index of " << indexOfPath << "</title>"
 			"<meta charset=\"utf-8\"/>"
 			"<style type=\"text/css\">"
-				"body {"
-					"background: #222;"
-					"color: #ddd;"
-					"font-family: " R"("Lato", "Hiragino Sans GB", "Source Han Sans SC", "Source Han Sans CN", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "WenQuanYi Micro Hei", "微软雅黑", sans-serif;)"
-				"}"
-				"a {"
-					"text-decoration: none;"
-				"}"
-				"a:link, a:visited {"
-					"color: #6793cf;"
-				"}"
-				"a:hover, a:active, a:focus {"
-					"color: #62bbe7;"
-				"}"
-				"tr td:nth-child(2) {"
-					"text-align: right;"
-				"}"
+			"body {"
+			"background: #222;"
+			"color: #ddd;"
+			"font-family: " R"("Lato", "Hiragino Sans GB", "Source Han Sans SC", "Source Han Sans CN", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "WenQuanYi Micro Hei", "微软雅黑", sans-serif;)"
+			"}"
+			"a {"
+			"text-decoration: none;"
+			"}"
+			"a:link, a:visited {"
+			"color: #6793cf;"
+			"}"
+			"a:hover, a:active, a:focus {"
+			"color: #62bbe7;"
+			"}"
+			"tr td:nth-child(2) {"
+			"text-align: right;"
+			"}"
 			"</style>";
 
 		if (imageBoard)
 		{
 			indexOfPage <<
 				"<style type=\"text/css\">"
-					"li {"
-						"width: 260px;"
-						"height: 260px;"
-						"float: left;"
-						"margin-left: 10px;"
-						"margin-top: 10px;"
-						"list-style-type: none;"
-					"}"
-					"img {"
-						"max-width: 100%;"
-						"max-height: 100%;"
-						"position: relative;"
-						"left: 50%;"
-						"top: 50%;"
-						"transform: translate(-50%, -50%);"
-					"}"
-					"#preview {"
-						"background-color: rgba(0, 0, 0, 0.8);"
-						"width: 100%;"
-						"height: 100%;"
-						"position: fixed;"
-						"top: 0;"
-						"left: 0;"
-						"z-index: 100;"
-					"}"
-					"#preview img {"
-						"left: 50%;"
-						"top: 50%;"
-						"transform: translate(-50%, -50%);"
-						"position: relative;"
-					"}"
+				"li {"
+				"width: 260px;"
+				"height: 260px;"
+				"float: left;"
+				"margin-left: 10px;"
+				"margin-top: 10px;"
+				"list-style-type: none;"
+				"}"
+				"img {"
+				"max-width: 100%;"
+				"max-height: 100%;"
+				"position: relative;"
+				"left: 50%;"
+				"top: 50%;"
+				"transform: translate(-50%, -50%);"
+				"}"
+				"#preview {"
+				"background-color: rgba(0, 0, 0, 0.8);"
+				"width: 100%;"
+				"height: 100%;"
+				"position: fixed;"
+				"top: 0;"
+				"left: 0;"
+				"z-index: 100;"
+				"}"
+				"#preview img {"
+				"left: 50%;"
+				"top: 50%;"
+				"transform: translate(-50%, -50%);"
+				"position: relative;"
+				"}"
 				"</style>"
 				"<script type=\"application/javascript\">"
-					"document.onreadystatechange = () =>"
-						"[...document.getElementsByTagName('img')].forEach(x => {"
-							"x.onclick = () => {"
-								"let pv = document.createElement('div');"
-								"pv.id = 'preview';"
-								"pv.onclick = () => document.getElementById('preview').remove();"
-								"let pic = document.createElement('img');"
-								"pic.src = x.src;"
-								"pv.appendChild(pic);"
-								"[...document.getElementsByTagName('body')].forEach(x => x.appendChild(pv));"
-							"};"
-						"});"
+				"document.onreadystatechange = () =>"
+				"[...document.getElementsByTagName('img')].forEach(x => {"
+				"x.onclick = () => {"
+				"let pv = document.createElement('div');"
+				"pv.id = 'preview';"
+				"pv.onclick = () => document.getElementById('preview').remove();"
+				"let pic = document.createElement('img');"
+				"pic.src = x.src;"
+				"pv.appendChild(pic);"
+				"[...document.getElementsByTagName('body')].forEach(x => x.appendChild(pv));"
+				"};"
+				"});"
 				"</script>";
 		}
 		indexOfPage <<
@@ -937,7 +974,7 @@ namespace KappaJuko
 			forbiddenResponse.SendAndClose(client);
 			return true;
 		}
-		
+
 		indexOfPage << "</body></html>";
 		auto indexOf = Response::FromHtml(indexOfPage);
 		indexOf.Finish();
@@ -1013,7 +1050,7 @@ namespace KappaJuko
 		CloseSocket(client);
 		return true;
 	}
-	
+
 	bool HttpServer::Work(const SocketType client, const sockaddr_in& address)
 	{
 		Request req(client, address);
@@ -1178,7 +1215,7 @@ namespace KappaJuko
 			throw;
 		}
 	}
-	
+
 	void HttpServer::DefaultLogThread()
 	{
 		std::ofstream fs{};
