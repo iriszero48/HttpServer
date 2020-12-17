@@ -4,9 +4,9 @@
 #include "String.h"
 #include "CppServerPages.h"
 
-//#define FilterTest
+#define FilterTest
 //#define CoffeeTest
-#define AccessTest
+//#define AccessTest
 //#define UserTest
 
 int main(const int argc, char* argv[])
@@ -57,7 +57,7 @@ int main(const int argc, char* argv[])
 		indexPage << "<a href=\"" << dir << "/\">" << dir << "/</a><br>";
 	}
 	indexPage << "</body></html>";
-	static auto index = KappaJuko::Response::FromHtml(indexPage);
+	static auto index = KappaJuko::Response::FromHtml(indexPage, 200, lp.IoModel);
 	index.Finish();
 	lp.CgiHook = [&](KappaJuko::Request& req)
 	{
@@ -71,7 +71,7 @@ int main(const int argc, char* argv[])
 		const auto pos = std::find_if(allow.begin(), allow.end(), [&](const auto& x) { return path.find(x) == 0; });
 		if (pos == allow.end())
 		{
-			auto toIndex = KappaJuko::Response(302);
+			auto toIndex = KappaJuko::Response(302, lp.IoModel);
 			toIndex.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/";
 			toIndex.Finish();
 			toIndex.SendAndClose(req.Client);

@@ -36,7 +36,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.7.4";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.8.0";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -347,10 +347,9 @@ namespace KappaJuko
 		std::map<WebUtility::HttpHeadersKey, std::string> Headers
 		{
 			{WebUtility::HttpHeadersKey::Server, std::string(ServerVersion)},
-			{WebUtility::HttpHeadersKey::Connection, "close"}
 		};
 
-		explicit Response(uint16_t statusCode = 200);
+		explicit Response(uint16_t statusCode = 200, const WebUtility::NetworkIoModel& ioModel = WebUtility::NetworkIoModel::Multiplexing);
 		~Response() = default;
 		Response(const Response& resp);
 		Response(Response&& resp) noexcept;
@@ -365,15 +364,16 @@ namespace KappaJuko
 
 		bool SendAndClose(SocketType client, bool headOnly = false);
 
-		[[nodiscard]] static Response FromStatusCodeHtml(uint16_t statusCode);
+		[[nodiscard]] static Response FromStatusCodeHtml(uint16_t statusCode, const WebUtility::NetworkIoModel& ioModel = WebUtility::NetworkIoModel::Multiplexing);
 
-		[[nodiscard]] static Response FromHtml(const std::ostringstream& html, uint16_t statusCode = 200);
+		[[nodiscard]] static Response FromHtml(const std::ostringstream& html, uint16_t statusCode = 200, const WebUtility::NetworkIoModel& ioModel = WebUtility::NetworkIoModel::Multiplexing);
 
-		[[nodiscard]] static Response FromFile(const std::filesystem::path& path, uint16_t statusCode = 200);
+		[[nodiscard]] static Response FromFile(const std::filesystem::path& path, uint16_t statusCode = 200, const WebUtility::NetworkIoModel& ioModel = WebUtility::NetworkIoModel::Multiplexing);
 
 	private:
 		std::ostringstream head{};
 		std::string headBuf;
+		WebUtility::NetworkIoModel ioModel;
 	};
 	
 	struct LauncherParams
@@ -385,8 +385,8 @@ namespace KappaJuko
 		bool AutoIndexMode = false;
 		bool ImageBoard = false;
 		bool NotFoundRedirect = false;
-		Response NotFoundResponse = Response::FromStatusCodeHtml(404);
-		Response ForbiddenResponse = Response::FromStatusCodeHtml(403);
+		Response NotFoundResponse = Response::FromStatusCodeHtml(404, IoModel);
+		Response ForbiddenResponse = Response::FromStatusCodeHtml(403, IoModel);
 		std::vector<std::string_view> IndexPages = { "index.html" };
 		std::filesystem::path LogPath = "";
 		LogLevel LogFileLevel = LogLevel::Info;
@@ -424,7 +424,7 @@ namespace KappaJuko
 		void Run();
 		void Close() const;
 
-		static bool IndexOf(const std::filesystem::path& path, Request& request, Response& forbiddenResponse, bool imageBoard = false, bool headOnly = false);
+		static bool IndexOf(const std::filesystem::path& path, Request& request, Response& forbiddenResponse, bool imageBoard = false, const WebUtility::NetworkIoModel& ioModel = WebUtility::NetworkIoModel::Multiplexing, bool headOnly = false);
 		
 	private:
 		LauncherParams params;
