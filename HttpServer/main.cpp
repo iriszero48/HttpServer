@@ -12,13 +12,19 @@
 int main(const int argc, char* argv[])
 {
 	auto lp = KappaJuko::LauncherParams::FromArgs(argc, argv);
+	static const auto KeepAlive = lp.IoModel == KappaJuko::NetworkIoModel::Multiplexing;
 	
 #ifdef FilterTest
+	
+#ifdef MacroWindows
+	static const std::vector<std::string_view> Allow = { "\\Danbooru2018", "\\Library" };
+#else
 	static std::vector<std::string_view> allow = { "/f", "/k/Library", "/m/Share" };
-	//static std::vector<std::string_view> allow = { "\Danbooru2018", "\Library" };
-	static std::ostringstream indexPage{};
-	indexPage
-		<< R"(<!DOCTYPE html>
+#endif
+	static const auto IndexPage = []()
+	{
+		std::string page =
+R"(<!DOCTYPE html>
 <html>
 	<head>
 		<title>Index of /</title>
@@ -52,32 +58,36 @@ int main(const int argc, char* argv[])
 	</head>
 	<body>
 		<h1>Index of /</h1><hr>)";
-	for (const auto& dir : allow)
-	{
-		indexPage << "<a href=\"" << dir << "/\">" << dir << "/</a><br>";
-	}
-	indexPage << "</body></html>";
-	static auto index = KappaJuko::Response::FromHtml(indexPage, 200, lp.IoModel);
+		for (const auto& dir : Allow)
+		{
+			String::StringCombine(
+				page, "<a href=\"", dir, "/\">", dir, "/</a><br>");
+		}
+		String::StringCombine(
+			page, "</body></html>");
+		return page;
+	}();
+	static auto index = KappaJuko::Response::FromHtml(KeepAlive, IndexPage, 200);
 	index.Finish();
-	lp.CgiHook = [&](KappaJuko::Request& req)
+	lp.CgiHook = [](KappaJuko::Request& req) -> std::optional<bool>
 	{
 		const auto path = std::filesystem::u8path(req.Path()).lexically_normal().u8string();
 		KappaJuko::Log.Write(" [csp]\n", path);
 		if (path == "/" || path == "\\")
 		{
-			index.SendAndClose(req.Client);
-			return true;
+			index.Send(req.Client);
+			return KeepAlive;
 		}
-		const auto pos = std::find_if(allow.begin(), allow.end(), [&](const auto& x) { return path.find(x) == 0; });
-		if (pos == allow.end())
+		const auto pos = std::find_if(Allow.begin(), Allow.end(), [&](const auto& x) { return path.find(x) == 0; });
+		if (pos == Allow.end())
 		{
-			auto toIndex = KappaJuko::Response(302, lp.IoModel);
+			auto toIndex = KappaJuko::Response(KeepAlive, 302);
 			toIndex.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/";
 			toIndex.Finish();
-			toIndex.SendAndClose(req.Client);
-			return true;
+			toIndex.Send(req.Client);
+			return KeepAlive;
 		}
-		return false;
+		return std::nullopt;
 	};
 #endif
 

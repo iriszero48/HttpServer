@@ -19,10 +19,22 @@
 
 #ifdef MacroWindows
 
+#include <atomic>
+
 #include <WS2tcpip.h>
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "User32.lib")
+
+typedef struct
+{
+    WSAOVERLAPPED Overlapped;
+    SOCKET Socket;
+    WSABUF wsaBuf;
+    char Buffer[1024];
+    DWORD BytesSent;
+    DWORD BytesToSend;
+} PER_IO_DATA, * LPPER_IO_DATA;
 
 #else
 
@@ -36,38 +48,39 @@
 #include <netdb.h>
 #include <sys/epoll.h>
 #include <unistd.h>
-#include <fcntl.h>
+//#include <fcntl.h>
 
 #endif
 
 #define KappaJukoThrow(ex, ...) ExceptionThrow(ex, __VA_ARGS__, "\n    at ", MacroFunctionName, "(" __FILE__ ":" MacroLine ")")
+#define IfFalseReturnFalse(x) if (!(x)) { return false; }
 
 namespace KappaJuko
 {
     ArgumentOptionCpp(LogLevel, None, Error, Info)
+    ArgumentOptionCpp(NetworkIoModel, Blocking, Multiplexing)
 
-        namespace WebUtility
+    namespace WebUtility
     {
-        ArgumentOptionCpp(NetworkIoModel, Blocking, Multiplexing)
 #undef DELETE
-            ArgumentOptionCpp(HttpMethod, GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH)
-            ArgumentOptionCpp(HttpHeadersKey, Accept, AcceptCH, AcceptCHLifetime, AcceptCharset, AcceptEncoding, AcceptLanguage,
-                AcceptPatch, AcceptRanges, AccessControlAllowCredentials, AccessControlAllowHeaders,
-                AccessControlAllowMethods, AccessControlAllowOrigin, AccessControlExposeHeaders,
-                AccessControlMaxAge, AccessControlRequestHeaders, AccessControlRequestMethod, Age, Allow, AltSvc,
-                Authorization, CacheControl, ClearSiteData, Connection, ContentDisposition, ContentEncoding,
-                ContentLanguage, ContentLength, ContentLocation, ContentRange, ContentSecurityPolicy,
-                ContentSecurityPolicyReportOnly, ContentType, Cookie, CrossOriginEmbedderPolicy,
-                CrossOriginOpenerPolicy, CrossOriginResourcePolicy, DNT, DPR, Date, DeviceMemory, Digest, ETag,
-                EarlyData, Expect, ExpectCT, Expires, Forwarded, From, Host, IfMatch, IfModifiedSince,
-                IfNoneMatch, IfRange, IfUnmodifiedSince, Index, KeepAlive, LastModified, Link, Location, NEL,
-                Origin, ProxyAuthenticate, ProxyAuthorization, Range, Referer, ReferrerPolicy, RetryAfter,
-                SaveData, SecFetchDest, SecFetchMode, SecFetchSite, SecFetchUser, SecWebSocketAccept, Server,
-                ServerTiming, SetCookie, SourceMap, HTTPStrictTransportSecurity, TE, TimingAllowOrigin, Tk,
-                Trailer, TransferEncoding, UpgradeInsecureRequests, UserAgent, Vary, Via, WWWAuthenticate,
-                WantDigest, Warning, XContentTypeOptions, XDNSPrefetchControl, XFrameOptions, XXSSProtection)
+        ArgumentOptionCpp(HttpMethod, GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH)
+        ArgumentOptionCpp(HttpHeadersKey, Accept, AcceptCH, AcceptCHLifetime, AcceptCharset, AcceptEncoding, AcceptLanguage,
+            AcceptPatch, AcceptRanges, AccessControlAllowCredentials, AccessControlAllowHeaders,
+            AccessControlAllowMethods, AccessControlAllowOrigin, AccessControlExposeHeaders,
+            AccessControlMaxAge, AccessControlRequestHeaders, AccessControlRequestMethod, Age, Allow, AltSvc,
+            Authorization, CacheControl, ClearSiteData, Connection, ContentDisposition, ContentEncoding,
+            ContentLanguage, ContentLength, ContentLocation, ContentRange, ContentSecurityPolicy,
+            ContentSecurityPolicyReportOnly, ContentType, Cookie, CrossOriginEmbedderPolicy,
+            CrossOriginOpenerPolicy, CrossOriginResourcePolicy, DNT, DPR, Date, DeviceMemory, Digest, ETag,
+            EarlyData, Expect, ExpectCT, Expires, Forwarded, From, Host, IfMatch, IfModifiedSince,
+            IfNoneMatch, IfRange, IfUnmodifiedSince, Index, KeepAlive, LastModified, Link, Location, NEL,
+            Origin, ProxyAuthenticate, ProxyAuthorization, Range, Referer, ReferrerPolicy, RetryAfter,
+            SaveData, SecFetchDest, SecFetchMode, SecFetchSite, SecFetchUser, SecWebSocketAccept, Server,
+            ServerTiming, SetCookie, SourceMap, HTTPStrictTransportSecurity, TE, TimingAllowOrigin, Tk,
+            Trailer, TransferEncoding, UpgradeInsecureRequests, UserAgent, Vary, Via, WWWAuthenticate,
+            WantDigest, Warning, XContentTypeOptions, XDNSPrefetchControl, XFrameOptions, XXSSProtection)
 
-            std::string UrlDecode(const std::string& raw)
+        std::string UrlDecode(const std::string& raw)
         {
             std::string res{};
             for (std::string::size_type i = 0, pos; i < raw.length();)
@@ -156,9 +169,9 @@ namespace KappaJuko
         if (!ip.has_value())
         {
             char host[NI_MAXHOST] = { 0 };
-            getnameinfo((sockaddr*)&addr, sizeof(addr),
+            getnameinfo(reinterpret_cast<sockaddr*>(&addr), sizeof(addr),
                 host, NI_MAXHOST,
-                NULL, 0,
+                nullptr, 0,
                 NI_NUMERICHOST);
             ip = host;
         }
@@ -319,49 +332,48 @@ namespace KappaJuko
         return pos->second;
     }
 
-    Response::Response(const uint16_t statusCode, const WebUtility::NetworkIoModel& ioModel) : ioModel(ioModel)
+    Response::Response(const bool keepAlive, const uint16_t statusCode)
     {
-        Headers[WebUtility::HttpHeadersKey::Connection] =
-            ioModel == WebUtility::NetworkIoModel::Multiplexing ? "keep-alive" : "close";
+        Headers[WebUtility::HttpHeadersKey::Connection] = keepAlive ? "keep-alive" : "close";
         head << HttpVersion << " " << statusCode << " " << WebUtility::HttpStatusCodes[statusCode] << "\r\n";
     }
 
     Response::Response(const Response& resp)
     {
+        SendBodyArgs = resp.SendBodyArgs;
         SendBody = resp.SendBody;
         Headers = resp.Headers;
         head << resp.head.str();
         headBuf = resp.headBuf;
-        ioModel = resp.ioModel;
     }
 
     Response::Response(Response&& resp) noexcept
     {
+        SendBodyArgs = resp.SendBodyArgs;
         SendBody = resp.SendBody;
         Headers = resp.Headers;
         head << resp.head.str();
         resp.head.clear();
         headBuf = resp.headBuf;
-        ioModel = resp.ioModel;
     }
 
     Response& Response::operator=(const Response& resp)
     {
+        SendBodyArgs = resp.SendBodyArgs;
         SendBody = resp.SendBody;
         Headers = resp.Headers;
         head << resp.head.str();
         headBuf = resp.headBuf;
-        ioModel = resp.ioModel;
         return *this;
     }
 
     Response& Response::operator=(Response&& resp) noexcept
     {
+        SendBodyArgs = resp.SendBodyArgs;
         SendBody = resp.SendBody;
         Headers = resp.Headers;
         head << resp.head.str();
         headBuf = resp.headBuf;
-        ioModel = resp.ioModel;
         return *this;
     }
 
@@ -378,82 +390,76 @@ namespace KappaJuko
 
     bool Response::SendHead(const SocketType client) const
     {
-        if (send(client, headBuf.c_str(), headBuf.length(), 0) <= 0) return false;
+        if (send(client, headBuf.c_str(), headBuf.length(), 0) < 0) return false;
         Log.Write("\n", headBuf);
         return true;
     }
 
     bool Response::Send(const SocketType client, const bool headOnly)
     {
-        if (SendHead(client))
+        IfFalseReturnFalse(SendHead(client))
+        if (!headOnly)
         {
-            if (!headOnly)
+            if (SendBody.has_value())
             {
-                if (SendBody.has_value())
-                {
-                    SendBody.value()(client);
-                }
+                IfFalseReturnFalse((**SendBody)(client, SendBodyArgs))
             }
-            return true;
-        }
-        return false;
-    }
-
-    bool Response::SendAndClose(const SocketType client, const bool headOnly)
-    {
-        Send(client, headOnly);
-        if (ioModel == WebUtility::NetworkIoModel::Blocking)
-        {
-            CloseSocket(client);
         }
         return true;
     }
 
-    Response Response::FromStatusCodeHtml(const uint16_t statusCode, const WebUtility::NetworkIoModel& ioModel)
+    Response Response::FromStatusCodeHtml(const bool keepAlive, const uint16_t statusCode)
     {
-        std::ostringstream page{};
-        page
-            << "<html><head><title>" << statusCode << "</title></head>"
-            << "<body><h1>" << statusCode << " - " << WebUtility::HttpStatusCodes[statusCode] << "</h1><br/><hr>"
-            << ServerVersion
-            << "</body></html>";
-        auto resp = FromHtml(page, statusCode, ioModel);
+        std::string page;
+        const auto sc = Convert::ToString(statusCode);
+        String::StringCombine(
+            page,
+            "<html><head><title>", sc, "</title></head>",
+            "<body><h1>", sc, " - ", WebUtility::HttpStatusCodes[statusCode], "</h1><br/><hr>",
+            ServerVersion,
+            "</body></html>");
+        auto resp = FromHtml(keepAlive, page, statusCode);
         resp.Finish();
         return resp;
     }
 
-    Response Response::FromHtml(const std::ostringstream& html, const uint16_t statusCode, const WebUtility::NetworkIoModel& ioModel)
+    Response Response::FromHtml(const bool keepAlive, const std::string& html, const uint16_t statusCode)
     {
-        const auto buf = html.str();
-        Response resp(statusCode, ioModel);
-        resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(buf.length());
-        resp.SendBody = [=](const auto client)
+        Response resp(keepAlive, statusCode);
+        resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(html.length());
+        resp.SendBodyArgs = html;
+    	static const auto func = [](const auto client, const std::any& args)
         {
-            if (send(client, buf.c_str(), buf.length(), 0) <= 0)return;
-        };
+            const auto buf = std::any_cast<std::string>(args);
+            if (send(client, buf.c_str(), buf.length(), 0) < 0) return false;
+            return true;
+        };;
+        resp.SendBody = func;
         return resp;
     }
 
-    Response Response::FromFile(const std::filesystem::path& path, const uint16_t statusCode, const WebUtility::NetworkIoModel& ioModel)
+    Response Response::FromFile(const bool keepAlive, const std::filesystem::path& path, const uint16_t statusCode)
     {
-        Response resp(statusCode, ioModel);
+        Response resp(keepAlive, statusCode);
         const auto fileSize = file_size(path);
         const auto fileLastModified = WebUtility::FileLastModified(path);
         resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(fileSize);
         resp.Headers[WebUtility::HttpHeadersKey::LastModified] = WebUtility::ToGmtString(fileLastModified);
         resp.Headers[WebUtility::HttpHeadersKey::ETag] = WebUtility::ETag(fileLastModified, fileSize);
         resp.Headers[WebUtility::HttpHeadersKey::CacheControl] = "max-age=31536000";
-
-        resp.SendBody = [&](const auto client)
+        resp.SendBodyArgs = path;
+        static const auto func = [](const auto client, const std::any& args)
         {
-            std::ifstream fs(path, std::ios_base::in | std::ios_base::binary);
+            std::ifstream fs(std::any_cast<std::filesystem::path>(args), std::ios_base::in | std::ios_base::binary);
             char buf[4096];
             do
             {
                 fs.read(buf, 4096);
-                if (send(client, buf, fs.gcount(), 0) <= 0)return;
+                if (send(client, buf, fs.gcount(), 0) < 0) return false;
             } while (!fs.eof());
+            return true;
         };
+        resp.SendBody = func;
         return resp;
     }
 
@@ -531,11 +537,11 @@ namespace KappaJuko
         Argument<decltype(IoModel)> ioModel
         {
                 "--iomodel",
-                "network IO model " + WebUtility::NetworkIoModelDesc(ToString(WebUtility::NetworkIoModel::Multiplexing)),
-                WebUtility::NetworkIoModel::Multiplexing,
+                "network IO model " + NetworkIoModelDesc(ToString(NetworkIoModel::Multiplexing)),
+                NetworkIoModel::Multiplexing,
                 ArgumentsFunc(ioModel)
                 {
-                    return {Function::Compose(toString, WebUtility::ToNetworkIoModel)(value), {}};
+                    return {Function::Compose(toString, ToNetworkIoModel)(value), {}};
                 }
         };
         Argument<decltype(AutoIndexMode), 0> autoIndexMode
@@ -572,10 +578,10 @@ namespace KappaJuko
         {
                 "--404",
                 "404 page",
-                Response::FromStatusCodeHtml(404, WebUtility::NetworkIoModel::Multiplexing),
+                Response::FromStatusCodeHtml(false, 404),
                 ArgumentsFunc(notFoundResponse)
                 {
-                    auto resp = Response::FromFile(Convert::ToString(value), 404);
+                    auto resp = Response::FromFile(false, Convert::ToString(value), 404);
                     resp.Finish();
                     return {resp, {}};
                 }
@@ -584,10 +590,10 @@ namespace KappaJuko
         {
                 "--403",
                 "403 page",
-                Response::FromStatusCodeHtml(403, WebUtility::NetworkIoModel::Multiplexing),
+                Response::FromStatusCodeHtml(false, 403),
                 ArgumentsFunc(forbiddenResponse)
                 {
-                    auto resp = Response::FromFile(Convert::ToString(value), 403);
+                    auto resp = Response::FromFile(false, Convert::ToString(value), 403);
                     resp.Finish();
                     return {resp, {}};
                 }
@@ -710,7 +716,17 @@ namespace KappaJuko
         sigaction(SIGPIPE, &action, nullptr);
 #endif
 
-        serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+#ifdef MacroWindows
+        if (params.IoModel == NetworkIoModel::Multiplexing)
+        {
+            serverSocket = WSASocket(
+                AF_INET, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, WSA_FLAG_OVERLAPPED);
+        }
+        else
+#endif
+        {
+            serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        }
 
         if (serverSocket
 #ifdef MacroWindows
@@ -736,12 +752,64 @@ namespace KappaJuko
         }
         listen(serverSocket, 10000);
     }
+	
+#ifdef MacroWindows
+    static DWORD WINAPI ServerWorkerThread(const LPVOID lpParameter)
+    {
+	    const auto hCompletionPort = static_cast<HANDLE>(lpParameter);
+        DWORD numBytesSent = 0;
+        ULONG completionKey;
+        LPPER_IO_DATA perIoData;
+
+        while (GetQueuedCompletionStatus(
+            hCompletionPort, &numBytesSent,
+            reinterpret_cast<PULONG_PTR>(&completionKey),
+            reinterpret_cast<LPOVERLAPPED*>(&perIoData),
+            INFINITE))
+        {
+            if (!perIoData)
+                continue;
+            
+            if (numBytesSent == 0)
+            {
+                std::cout << "Client disconnected!\r\n\r\n";
+            }
+            else
+            {
+                perIoData->BytesSent += numBytesSent;
+                if (perIoData->BytesSent < perIoData->BytesToSend)
+                {
+                    perIoData->wsaBuf.buf = &(perIoData->Buffer[perIoData->BytesSent]);
+                    perIoData->wsaBuf.len = (perIoData->BytesToSend - perIoData->BytesSent);
+                }
+                else
+                {
+                    perIoData->wsaBuf.buf = perIoData->Buffer;
+                    perIoData->wsaBuf.len = strlen(perIoData->Buffer);
+                    perIoData->BytesSent = 0;
+                    perIoData->BytesToSend = perIoData->wsaBuf.len;
+                }
+
+                if (WSASend(perIoData->Socket, &(perIoData->wsaBuf), 1, &numBytesSent, 0, &(perIoData->Overlapped), NULL) == 0)
+                    continue;
+
+                if (WSAGetLastError() == WSA_IO_PENDING)
+                    continue;
+            }
+
+            closesocket(perIoData->Socket);
+            delete perIoData;
+        }
+
+        return 0;
+    }
+#endif
 
     void HttpServer::Run()
     {
-        if (params.IoModel == WebUtility::NetworkIoModel::Blocking)
+        threadPool = std::vector<std::thread>();
+        if (params.IoModel == NetworkIoModel::Blocking)
         {
-            threadPool = std::vector<std::thread>();
             for (auto i = 0; i < params.ThreadCount; ++i)
             {
                 threadPool.emplace_back([&](const auto id)
@@ -755,27 +823,77 @@ namespace KappaJuko
                         {
                             continue;
                         }
+                        bool alive;
                         try
                         {
-                            Work(client, clientAddr);
+                             alive = Work(client, clientAddr, false);
                         }
                         catch (const KappaJukoException& ex)
                         {
+                            alive = false;
                             Log.Write<LogLevel::Error>(
                                 "\nException in thread \"", Convert::ToString(id), "\" java.lang.NullPointerException: ", ex.what(),
                                 "\n    at ", MacroFunctionName, "(" __FILE__ ":" MacroLine ")\n");
                         }
+                    	if(!alive)
+                    	{
+                            CloseSocket(client);
+                    	}
                     }
                 }, i);
             }
-            for (auto& t : threadPool)
-            {
-                t.join();
-            }
         }
-        else if (params.IoModel == WebUtility::NetworkIoModel::Multiplexing)
+        else if (params.IoModel == NetworkIoModel::Multiplexing)
         {
 #ifdef MacroWindows
+	        const auto iocp = CreateIoCompletionPort(
+                INVALID_HANDLE_VALUE, nullptr, 0, params.ThreadCount);
+            while (true)
+            {
+                sockaddr_in clientAddr{};
+                auto addrLen = sizeof clientAddr;
+	            auto client = WSAAccept(
+                    serverSocket,
+                    reinterpret_cast<SOCKADDR*>(&clientAddr),
+                    reinterpret_cast<int*>(&addrLen),
+                    nullptr, NULL);
+                if (client <= 0)
+                {
+                    continue;
+                }
+                CreateIoCompletionPort(
+                    reinterpret_cast<HANDLE>(client), iocp, 0, 0);
+                for (DWORD i = 0; i < params.ThreadCount; ++i)
+                {
+                    HANDLE thread = CreateThread(
+                        nullptr, 
+                        0,
+                        ServerWorkerThread,
+                        iocp,
+                        0, NULL);
+                    CloseHandle(thread);
+                }
+            	
+                LPPER_IO_DATA pPerIoData = new PER_IO_DATA;
+                ZeroMemory(pPerIoData, sizeof(PER_IO_DATA));
+
+                //strcpy(pPerIoData->Buffer, "Welcome to the server!\r\n");
+
+                pPerIoData->Overlapped.hEvent = WSACreateEvent();
+                pPerIoData->Socket = client;
+                pPerIoData->wsaBuf.buf = pPerIoData->Buffer;
+                pPerIoData->wsaBuf.len = strlen(pPerIoData->Buffer);
+                pPerIoData->BytesToSend = pPerIoData->wsaBuf.len;
+
+                DWORD dwNumSent;
+                if (WSASend(client, &(pPerIoData->wsaBuf), 1, &dwNumSent, 0, &(pPerIoData->Overlapped), NULL) == SOCKET_ERROR)
+                {
+                    if (WSAGetLastError() != WSA_IO_PENDING)
+                    {
+                        delete pPerIoData;
+                    }
+                }
+            }
 #else
             epoll_event events[4096];
             auto epollFd = epoll_create(4096);
@@ -788,7 +906,6 @@ namespace KappaJuko
             };
             std::unordered_map<SocketType, sockaddr_in> addrs{};
             Thread::Channel<SocketType> msg{};
-            threadPool = std::vector<std::thread>();
             for (auto i = 0; i < params.ThreadCount; ++i)
             {
                 threadPool.emplace_back([&](const auto id)
@@ -796,15 +913,22 @@ namespace KappaJuko
                     while (true)
                     {
                         auto client = msg.Read();
+                        bool alive;
                         try
                         {
-                            Work(client, addrs.at(client));
+                            alive = Work(client, addrs.at(client), true);
                         }
                         catch (const KappaJukoException& ex)
                         {
+                            alive = false;
                             Log.Write<LogLevel::Error>(
                                 "\nException in thread \"", Convert::ToString(id), "\" java.lang.NullPointerException: ", ex.what(),
                                 "\n    at ", MacroFunctionName, "(" __FILE__ ":" MacroLine ")\n");
+                        }
+                        if (!alive)
+                        {
+                            CloseSocket(client);
+                            epoll_ctl(epollFd, EPOLL_CTL_DEL, client, nullptr);
                         }
                     }
                 }, i);
@@ -832,11 +956,11 @@ namespace KappaJuko
                     }
                 }
             }
-            for (auto& t : threadPool)
-            {
-                t.join();
-            }
 #endif
+        }
+        for (auto& thread : threadPool)
+        {
+            thread.join();
         }
     }
 
@@ -845,7 +969,7 @@ namespace KappaJuko
         CloseSocket(serverSocket);
     }
 
-    static bool IndexOfBody(const std::filesystem::path& path, std::ostringstream& page, bool imageBoard = false)
+    static bool IndexOfBody(const std::filesystem::path& path, std::string& page, const bool imageBoard = false)
     {
         std::unordered_set<std::string_view> imageTypes{ ".png", ".jpg", ".jpeg", ".webp", ".gif" };
         using UrlType = std::string;
@@ -884,53 +1008,61 @@ namespace KappaJuko
                 dirs.emplace(fnu8, fn);
             }
         }
-
-        page << "<a href=\"../\">../</a><br/>";
+        String::StringCombine(
+            page, "<a href=\"../\">../</a><br/>");
         while (!dirs.empty())
         {
             const auto& [fnu8, fn] = dirs.top();
-            page << "<a href=\"" << fn << "/\">" << fnu8 << "/</a><br/>";
+            String::StringCombine(
+                page, "<a href=\"", fn, "/\">", fnu8, "/</a><br/>");
             dirs.pop();
         }
         if (!files.empty())
         {
-            page <<
+            String::StringCombine(
+                page,
                 "<hr>"
                 "<table>"
-                "<tr><th>File Name</th><th>Size</th></tr>";
+                "<tr><th>File Name</th><th>Size</th></tr>");
             while (!files.empty())
             {
                 const auto& [fnu8, fn, sz] = files.top();
-                page << "<tr><td><a href=\"" << fn << "\">" << fnu8 << "</a></td><td>" << sz << "</td></tr>";
+                String::StringCombine(
+                    page, "<tr><td><a href=\"", fn, "\">", fnu8, "</a></td><td>", Convert::ToString(sz), "</td></tr>");
                 files.pop();
             }
-            page << "</table>";
+            String::StringCombine(
+                page, "</table>");
         }
         if (!images.empty())
         {
-            page <<
+            String::StringCombine(
+                page,
                 "<hr>"
-                "<ul>";
+                "<ul>");
             while (!images.empty())
             {
-                page << "<li><img src=\"" << images.top() << "\"/></li>";
+                String::StringCombine(
+                    page, "<li><img src=\"", images.top(), "\"/></li>");
                 images.pop();
             }
-            page << "</ul>";
+            String::StringCombine(
+                page, "</ul>");
         }
         return true;
     }
 
     bool HttpServer::IndexOf(const std::filesystem::path& path, Request& request, Response& forbiddenResponse,
-        bool imageBoard, const WebUtility::NetworkIoModel& ioModel, bool headOnly)
+							const bool keepAlive, const bool imageBoard, bool headOnly)
     {
         const auto client = request.Client;
         const auto indexOfPath = request.Path();
-        std::ostringstream indexOfPage{};
-        indexOfPage <<
+        std::string indexOfPage{};
+    	String::StringCombine(
+        indexOfPage,
             "<!DOCTYPE html>"
             "<html>"
-            "<head><title>Index of " << indexOfPath << "</title>"
+            "<head><title>Index of " , indexOfPath , "</title>"
             "<meta charset=\"utf-8\"/>"
             "<style type=\"text/css\">"
             "body {"
@@ -950,11 +1082,12 @@ namespace KappaJuko
             "tr td:nth-child(2) {"
             "text-align: right;"
             "}"
-            "</style>";
+            "</style>");
 
         if (imageBoard)
         {
-            indexOfPage <<
+        	String::StringCombine(
+            indexOfPage,
                 "<style type=\"text/css\">"
                 "li {"
                 "width: 260px;"
@@ -1001,27 +1134,26 @@ namespace KappaJuko
                 "[...document.getElementsByTagName('body')].forEach(x => x.appendChild(pv));"
                 "};"
                 "});"
-                "</script>";
+                "</script>");
         }
-        indexOfPage <<
+        String::StringCombine(
+            indexOfPage,
             "</head>"
             "<body>"
-            "<h1>Index of " << indexOfPath << "</h1><hr>";
+            "<h1>Index of ", indexOfPath, "</h1><hr>");
 
         if (!IndexOfBody(path, indexOfPage, imageBoard))
         {
-            forbiddenResponse.SendAndClose(client);
-            return true;
+            return forbiddenResponse.Send(client, headOnly);
         }
-
-        indexOfPage << "</body></html>";
-        auto indexOf = Response::FromHtml(indexOfPage, 200, ioModel);
+        String::StringCombine(
+            indexOfPage, "</body></html>");
+        auto indexOf = Response::FromHtml(keepAlive, indexOfPage, 200);
         indexOf.Finish();
-        indexOf.SendAndClose(client, headOnly);
-        return true;
+        return indexOf.Send(client, headOnly);
     }
 
-    static bool RangeResponse(const std::filesystem::path& path, SocketType client, const std::string& rangeHeader, const WebUtility::NetworkIoModel& ioModel, const bool headOnly = false)
+    static bool RangeResponse(const std::filesystem::path& path, SocketType client, const std::string& rangeHeader, const bool keepAlive, const bool headOnly = false)
     {
         const auto fileSize = file_size(path);
         const auto range = rangeHeader.substr(5);
@@ -1049,24 +1181,27 @@ namespace KappaJuko
             }
             if ((start >= fileSize) || (end >= fileSize))
             {
-                Response notSatisfiable(416, ioModel);
+                Response notSatisfiable(keepAlive, 416);
                 std::string cr("*/");
                 cr.append(Convert::ToString(fileSize));
                 notSatisfiable.Headers[WebUtility::HttpHeadersKey::ContentRange] = cr;
                 notSatisfiable.Finish();
-                notSatisfiable.Send(client);
+                IfFalseReturnFalse(notSatisfiable.Send(client))
             }
             else
             {
                 const auto diff = end - start + 1;
-                Response resp(206, ioModel);
+                Response resp(keepAlive, 206);
                 resp.Headers[WebUtility::HttpHeadersKey::AcceptRanges] = "bytes";
                 resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(diff);
                 std::ostringstream contextRange{};
                 contextRange << "bytes " << start << "-" << end << "/" << fileSize;
                 resp.Headers[WebUtility::HttpHeadersKey::ContentRange] = contextRange.str();
-                resp.SendBody = [=](const auto client)
+                resp.SendBodyArgs = std::tuple<std::filesystem::path, std::uint64_t, std::uint64_t>(path, start, diff);
+                static const auto func = [](const auto client, const std::any& args)
                 {
+                    const auto& [path, start, diff] =
+                        std::any_cast<std::tuple<std::filesystem::path, std::uint64_t, std::uint64_t>>(args);
                     std::ifstream fs(path, std::ios_base::in | std::ios_base::binary);
                     char buf[4096];
                     decltype(end) count = 0;
@@ -1078,22 +1213,20 @@ namespace KappaJuko
 #endif
                         fs.read(buf, std::min(static_cast<decltype(diff)>(4096), diff - count));
                         const auto counted = fs.gcount();
-                        if (send(client, buf, counted, 0) < 0) return;
+                        if (send(client, buf, counted, 0) < 0) return false;
                         count += counted;
                     }
+                    return true;
                 };
+                resp.SendBody = func;
                 resp.Finish();
-                resp.Send(client, headOnly);
+                IfFalseReturnFalse(resp.Send(client, headOnly))
             }
         } while (comPos != std::string::npos);
-        if (ioModel == WebUtility::NetworkIoModel::Blocking)
-        {
-            CloseSocket(client);
-        }
         return true;
     }
 
-    bool HttpServer::Work(const SocketType client, const sockaddr_in& address)
+    bool HttpServer::Work(const SocketType client, const sockaddr_in& address, const bool keepAlive)
     {
         Request req(client, address);
         try
@@ -1104,16 +1237,21 @@ namespace KappaJuko
             }
             if (req.Raw.empty())
             {
-                send(client, req.Raw.c_str(), 0, 0);
-                return true;
+	            if (send(client, req.Raw.c_str(), req.Raw.length(), 0) < 0)
+	            {
+                    return false;
+	            }
+                return keepAlive;
             }
             if (params.CgiHook.has_value())
             {
-                if (params.CgiHook.value()(req))
+                const auto cgi = (*(*params.CgiHook))(req);
+                if (cgi.has_value())
                 {
-                    return true;
+                    return *cgi;
                 }
             }
+            const auto headOnly = req.Method() == WebUtility::HttpMethod::HEAD;
             const auto rawPath = req.Path();
             if (params.LogFileLevel >= LogLevel::Debug)
             {
@@ -1130,16 +1268,14 @@ namespace KappaJuko
                                 [](const auto& x) {return !(x == '/' || x == '\\'); }))));
             if (realPath.lexically_normal().u8string().find(params.RootPath.lexically_normal().u8string()) != 0)
             {
-                Response::FromStatusCodeHtml(400, params.IoModel).SendAndClose(client);
-                return true;
+                IfFalseReturnFalse(Response::FromStatusCodeHtml(keepAlive, 400).Send(client, headOnly))
+                return keepAlive;
             }
-            auto headOnly = false;
             switch (req.Method())
             {
             case WebUtility::HttpMethod::GET:
             case WebUtility::HttpMethod::POST:
             case WebUtility::HttpMethod::HEAD:
-                headOnly = req.Method() == WebUtility::HttpMethod::HEAD;
                 if (exists(realPath))
                 {
                     if (is_directory(realPath))
@@ -1148,12 +1284,17 @@ namespace KappaJuko
                         {
                             if (rawPath[rawPath.length() - 1] != '/')
                             {
-                                Response moveResp(301, params.IoModel);
+                                Response moveResp(keepAlive, 301);
                                 moveResp.Headers[WebUtility::HttpHeadersKey::Location] = rawPath + "/";
                                 moveResp.Finish();
-                                return moveResp.SendAndClose(client);
+                                IfFalseReturnFalse(moveResp.Send(client, headOnly))
+                                return keepAlive;
                             }
-                            return IndexOf(realPath, req, params.ForbiddenResponse, params.ImageBoard, params.IoModel, headOnly);
+                            if (!IndexOf(realPath, req, params.ForbiddenResponse, keepAlive, params.ImageBoard, headOnly))
+                            {
+                                return false;
+                            }
+                            return keepAlive;
                         }
                         const auto pos = std::find_if(
                             params.IndexPages.begin(),
@@ -1161,8 +1302,8 @@ namespace KappaJuko
                             [&](const auto& index) { return exists(realPath / index); });
                         if (pos == params.IndexPages.end())
                         {
-                            params.ForbiddenResponse.SendAndClose(client, headOnly);
-                            return true;
+                            IfFalseReturnFalse(params.ForbiddenResponse.Send(client, headOnly))
+                            return keepAlive;
                         }
                         realPath /= *pos;
                     }
@@ -1172,39 +1313,31 @@ namespace KappaJuko
                         const auto ifModified = req.Header(WebUtility::HttpHeadersKey::IfModifiedSince);
                         if (ifNoneMatch.has_value())
                         {
-                            if (WebUtility::ETag(WebUtility::FileLastModified(realPath), file_size(realPath)) == ifNoneMatch)
+                            if (WebUtility::ETag(WebUtility::FileLastModified(realPath), file_size(realPath)) == *ifNoneMatch)
                             {
-                                Response resp(304, params.IoModel);
-                                resp.Headers[WebUtility::HttpHeadersKey::ETag] = ifNoneMatch.value();
+                                Response resp(keepAlive, 304);
+                                resp.Headers[WebUtility::HttpHeadersKey::ETag] = *ifNoneMatch;
                                 resp.Headers[WebUtility::HttpHeadersKey::CacheControl] = "max-age=31536000";
                                 if (ifModified.has_value())
                                 {
-                                    resp.Headers[WebUtility::HttpHeadersKey::LastModified] = ifModified.value();
+                                    resp.Headers[WebUtility::HttpHeadersKey::LastModified] = *ifModified;
                                 }
                                 resp.Finish();
-                                resp.SendHead(client);
-                                if (params.IoModel == WebUtility::NetworkIoModel::Blocking)
-                                {
-                                    CloseSocket(client);
-                                }
-                                return true;
+                                IfFalseReturnFalse(resp.SendHead(client))
+                                return keepAlive;
                             }
                         }
                         else if (ifModified.has_value())
                         {
                             const auto lm = WebUtility::ToGmtString(WebUtility::FileLastModified(realPath));
-                            if (lm == ifModified.value())
+                            if (lm == *ifModified)
                             {
-                                Response resp(304, params.IoModel);
-                                resp.Headers[WebUtility::HttpHeadersKey::LastModified] = ifModified.value();
+                                Response resp(keepAlive, 304);
+                                resp.Headers[WebUtility::HttpHeadersKey::LastModified] = *ifModified;
                                 resp.Headers[WebUtility::HttpHeadersKey::CacheControl] = "max-age=31536000";
                                 resp.Finish();
-                                resp.SendHead(client);
-                                if (params.IoModel == WebUtility::NetworkIoModel::Blocking)
-                                {
-                                    CloseSocket(client);
-                                }
-                                return true;
+                                IfFalseReturnFalse(resp.SendHead(client))
+                                return keepAlive;
                             }
                         }
                         auto rangeAllow = true;
@@ -1212,8 +1345,8 @@ namespace KappaJuko
                         if (ifRange.has_value())
                         {
                             const auto last = WebUtility::FileLastModified(realPath);
-                            if (WebUtility::ETag(last, file_size(realPath)) != ifRange.value()
-                                && WebUtility::ToGmtString(last) != ifRange.value())
+                            if (WebUtility::ETag(last, file_size(realPath)) != *ifRange
+                                && WebUtility::ToGmtString(last) != *ifRange)
                             {
                                 rangeAllow = false;
                             }
@@ -1221,9 +1354,10 @@ namespace KappaJuko
                         const auto rawRange = req.Header(WebUtility::HttpHeadersKey::Range);
                         if (rangeAllow && rawRange.has_value())
                         {
-                            return RangeResponse(realPath, client, rawRange.value(), params.IoModel, headOnly);
+	                        IfFalseReturnFalse(RangeResponse(realPath, client, *rawRange, keepAlive, headOnly))
+                            return keepAlive;
                         }
-                        auto resp = Response::FromFile(realPath, 200, params.IoModel);
+                        auto resp = Response::FromFile(keepAlive, realPath, 200);
                         auto ext = realPath.extension().u8string();
                         String::ToLower(ext);
                         auto pos = WebUtility::HttpContentType.find(ext);
@@ -1232,31 +1366,27 @@ namespace KappaJuko
                             resp.Headers[WebUtility::HttpHeadersKey::ContentType] = pos->second;
                         }
                         resp.Finish();
-                        resp.SendAndClose(req.Client, headOnly);
-                        return true;
+                        IfFalseReturnFalse(resp.Send(req.Client, headOnly))
+                        return keepAlive;
                     }
-                    params.ForbiddenResponse.SendAndClose(client, headOnly);
-                    return true;
+                    IfFalseReturnFalse(params.ForbiddenResponse.Send(client, headOnly))
+                    return keepAlive;
                 }
-                params.NotFoundResponse.SendAndClose(client, headOnly);
-                return true;
+                IfFalseReturnFalse(params.NotFoundResponse.Send(client, headOnly))
+                return keepAlive;
             case WebUtility::HttpMethod::PUT:
             case WebUtility::HttpMethod::DELETE:
             case WebUtility::HttpMethod::CONNECT:
             case WebUtility::HttpMethod::OPTIONS:
             case WebUtility::HttpMethod::TRACE:
             case WebUtility::HttpMethod::PATCH:
-                Response::FromStatusCodeHtml(501, params.IoModel).SendAndClose(client);
-                return true;
+                IfFalseReturnFalse(Response::FromStatusCodeHtml(keepAlive, 501).Send(client))
+                return keepAlive;
             }
-            return false;
+            return keepAlive;
         }
         catch (const KappaJukoException&)
         {
-            if (params.IoModel == WebUtility::NetworkIoModel::Blocking)
-            {
-                CloseSocket(client);
-            }
             throw;
         }
         catch (const std::exception& ex)
