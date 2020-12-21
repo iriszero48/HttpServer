@@ -15,12 +15,15 @@ int main(const int argc, char* argv[])
 	static const auto KeepAlive = lp.IoModel == KappaJuko::NetworkIoModel::Multiplexing;
 	
 #ifdef FilterTest
-	
+	static const std::vector<std::string_view> Allow =
+	{
 #ifdef MacroWindows
-	static const std::vector<std::string_view> Allow = { "\\Danbooru2018", "\\Library" };
+		"\\Danbooru2018", "\\Library"
 #else
-	static std::vector<std::string_view> allow = { "/f", "/k/Library", "/m/Share" };
+		"/f", "/k/Library", "/m/Share"
 #endif
+	};
+
 	static const auto IndexPage = []()
 	{
 		std::string page =
@@ -60,11 +63,9 @@ R"(<!DOCTYPE html>
 		<h1>Index of /</h1><hr>)";
 		for (const auto& dir : Allow)
 		{
-			String::StringCombine(
-				page, "<a href=\"", dir, "/\">", dir, "/</a><br>");
+			String::StringCombine(page, "<a href=\"", dir, "/\">", dir, "/</a><br>");
 		}
-		String::StringCombine(
-			page, "</body></html>");
+		String::StringCombine(page, "</body></html>");
 		return page;
 	}();
 	static auto index = KappaJuko::Response::FromHtml(KeepAlive, IndexPage, 200);

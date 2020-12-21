@@ -36,7 +36,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.8.1";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.8.2";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -121,7 +121,7 @@ namespace KappaJuko
 			Trailer, TransferEncoding, UpgradeInsecureRequests, UserAgent, Vary, Via, WWWAuthenticate,
 			WantDigest, Warning, XContentTypeOptions, XDNSPrefetchControl, XFrameOptions, XXSSProtection)
 		
-		static std::unordered_map<HttpHeadersKey, std::string_view> HttpHeaders
+		static const std::unordered_map<HttpHeadersKey, std::string_view> HttpHeaders
 		{
 			{HttpHeadersKey::Accept, "Accept"},
 			{HttpHeadersKey::AcceptCH, "Accept-CH"},
@@ -219,7 +219,7 @@ namespace KappaJuko
 			{HttpHeadersKey::XXSSProtection, "X-XSS-Protection"},
 		};
 
-		static std::unordered_map<uint16_t, std::string_view> HttpStatusCodes
+		static const std::unordered_map<uint16_t, std::string_view> HttpStatusCodes
 		{
 			{100, "Continue"},
 			{101, "Switching Protocol"},
@@ -277,13 +277,13 @@ namespace KappaJuko
 			{511, "Network Authentication Required"},
 		};
 
-		static std::unordered_map<std::string_view, std::string_view> HttpContentType
+		static const std::unordered_map<std::string_view, std::string_view> HttpContentType
 		{
 			{".mp4", "video/mp4"},
 			{".wmv", "video/x-ms-wmv"}
 		};
 
-		static auto UrlEncodeTable = []()
+		static const auto UrlEncodeTable = []()
 		{
 			std::array<bool, 256> tab{};
 			for (auto i = 0; i < 256; ++i)
@@ -309,8 +309,18 @@ namespace KappaJuko
 	public:
 		SocketType Client;
 		std::string Raw{};
+		std::any args{};
+		bool(*Send)(SocketType, const char const*, std::uint16_t, const std::any&);
 		
-		explicit Request(SocketType sock, const sockaddr_in& addr);
+		explicit Request(
+			SocketType sock,
+			const sockaddr_in& addr,
+			decltype(Send) sendFunc =
+				[](SocketType client, const char const* buf, std::uint16_t len, const std::any& args) -> bool
+				{
+			return !(send(client, buf, len, 0) < 0);
+				},
+			const std::any& args = {});
 
 		std::string Ip();
 		std::uint16_t Port();

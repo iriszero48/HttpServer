@@ -335,7 +335,7 @@ namespace KappaJuko
     Response::Response(const bool keepAlive, const uint16_t statusCode)
     {
         Headers[WebUtility::HttpHeadersKey::Connection] = keepAlive ? "keep-alive" : "close";
-        head << HttpVersion << " " << statusCode << " " << WebUtility::HttpStatusCodes[statusCode] << "\r\n";
+        head << HttpVersion << " " << statusCode << " " << WebUtility::HttpStatusCodes.at(statusCode) << "\r\n";
     }
 
     Response::Response(const Response& resp)
@@ -382,7 +382,7 @@ namespace KappaJuko
         Headers[WebUtility::HttpHeadersKey::Date] = WebUtility::ToGmtString(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
         for (const auto& [key, value] : Headers)
         {
-            head << WebUtility::HttpHeaders[key] << ": " << value << "\r\n";
+            head << WebUtility::HttpHeaders.at(key) << ": " << value << "\r\n";
         }
         head << "\r\n";
         headBuf = head.str();
@@ -415,7 +415,7 @@ namespace KappaJuko
         String::StringCombine(
             page,
             "<html><head><title>", sc, "</title></head>",
-            "<body><h1>", sc, " - ", WebUtility::HttpStatusCodes[statusCode], "</h1><br/><hr>",
+            "<body><h1>", sc, " - ", WebUtility::HttpStatusCodes.at(statusCode), "</h1><br/><hr>",
             ServerVersion,
             "</body></html>");
         auto resp = FromHtml(keepAlive, page, statusCode);
