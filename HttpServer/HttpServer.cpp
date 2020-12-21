@@ -20,6 +20,7 @@
 #ifdef MacroWindows
 
 #include <atomic>
+#include <utility>
 
 #include <WS2tcpip.h>
 
@@ -110,7 +111,7 @@ namespace KappaJuko
                     std::find_if(
                         beg,
                         raw.end(),
-                        [&](const uint8_t x) { return UrlEncodeTable[x]; });
+                        [](const uint8_t x) { return UrlEncodeTable[x]; });
                 if (pos == raw.end())
                 {
                     res.append(raw, i);
@@ -152,18 +153,23 @@ namespace KappaJuko
         }
     }
 
-    Request::Request(const SocketType sock, const sockaddr_in& addr) : Client(sock), addr(addr)
-    {
+    //Request::Request(const SocketType sock, const sockaddr_in& addr) : Client(sock), addr(addr)
+
+
+    Request::Request(const SocketType sock, const sockaddr_in& addr, const decltype(RecvFunc) recvFunc,
+                     std::any recvFuncArgs)
+	: RecvFuncArgs(std::move(recvFuncArgs)), RecvFunc(recvFunc), Client(sock), addr(addr)
+{
         int len;
         char buf[4097] = { 0 };
         do
         {
-            len = recv(Client, buf, 4096, 0);
+            len = RecvFunc(Client, buf, 4096, RecvFuncArgs);
             buf[len] = 0;
             Raw.append(buf);
         } while (len == 4096);
     }
-
+	
     std::string Request::Ip()
     {
         if (!ip.has_value())
@@ -241,13 +247,18 @@ namespace KappaJuko
                     break;
                 }
                 const auto keyStr = Raw.substr(next, pos - next);
-                auto key =
-                    std::find_if(
-                        WebUtility::HttpHeaders.begin(),
-                        WebUtility::HttpHeaders.end(),
-                        [&](const auto& p) { return p.second == keyStr; });
-
-                if (key != WebUtility::HttpHeaders.end())
+                auto found = false;
+                auto key = WebUtility::HttpHeaders.begin();
+                auto end = WebUtility::HttpHeaders.end();
+            	for (; key != end; ++key)
+            	{
+	                if (key->second == keyStr)
+	                {
+                        found = true;
+                        break;
+	                }
+            	}
+                if (found)
                 {
                     next = Raw.find('\n', pos);
                     headerData.value()[key->first] = Raw.substr(pos + 2, next - pos - 3);
@@ -331,84 +342,99 @@ namespace KappaJuko
         }
         return pos->second;
     }
+	
+    int Request::DefaultRecvFunc(const SocketType client, char* buf, const std::uint16_t len, const std::any&)
+    {
+        return recv(client, buf, len, 0);
+    }
 
-    Response::Response(const bool keepAlive, const uint16_t statusCode)
+    Response::Response(const bool keepAlive, const decltype(SendFunc) sendFunc, std::any sendFuncArgs, const uint16_t statusCode)
+	    :SendFuncArgs(std::move(sendFuncArgs)), SendFunc(sendFunc)
     {
         Headers[WebUtility::HttpHeadersKey::Connection] = keepAlive ? "keep-alive" : "close";
-        head << HttpVersion << " " << statusCode << " " << WebUtility::HttpStatusCodes.at(statusCode) << "\r\n";
+        String::StringCombine(
+            head, HttpVersion, " ", Convert::ToString(statusCode), " ", WebUtility::HttpStatusCodes.at(statusCode), "\r\n");
     }
-
-    Response::Response(const Response& resp)
-    {
-        SendBodyArgs = resp.SendBodyArgs;
-        SendBody = resp.SendBody;
-        Headers = resp.Headers;
-        head << resp.head.str();
-        headBuf = resp.headBuf;
-    }
-
-    Response::Response(Response&& resp) noexcept
-    {
-        SendBodyArgs = resp.SendBodyArgs;
-        SendBody = resp.SendBody;
-        Headers = resp.Headers;
-        head << resp.head.str();
-        resp.head.clear();
-        headBuf = resp.headBuf;
-    }
-
-    Response& Response::operator=(const Response& resp)
-    {
-        SendBodyArgs = resp.SendBodyArgs;
-        SendBody = resp.SendBody;
-        Headers = resp.Headers;
-        head << resp.head.str();
-        headBuf = resp.headBuf;
-        return *this;
-    }
-
-    Response& Response::operator=(Response&& resp) noexcept
-    {
-        SendBodyArgs = resp.SendBodyArgs;
-        SendBody = resp.SendBody;
-        Headers = resp.Headers;
-        head << resp.head.str();
-        headBuf = resp.headBuf;
-        return *this;
-    }
+	
+    //Response::Response(const Response& resp)
+    //{
+    //    SendFuncArgs = resp.SendFuncArgs;
+    //    SendFunc = resp.SendFunc;
+    //    SendBodyArgs = resp.SendBodyArgs;
+    //    SendBody = resp.SendBody;
+    //    Headers = resp.Headers;
+    //    head = resp.head;
+    //}
+    //
+    //Response::Response(Response&& resp) noexcept
+    //{
+    //    SendFuncArgs = resp.SendFuncArgs;
+    //    SendFunc = resp.SendFunc;
+    //    SendBodyArgs = resp.SendBodyArgs;
+    //    SendBody = resp.SendBody;
+    //    Headers = resp.Headers;
+    //    head = resp.head;
+    //}
+    //
+    //Response& Response::operator=(const Response& resp)
+    //{
+    //    SendFuncArgs = resp.SendFuncArgs;
+    //    SendFunc = resp.SendFunc;
+    //    SendBodyArgs = resp.SendBodyArgs;
+    //    SendBody = resp.SendBody;
+    //    Headers = resp.Headers;
+    //    head = resp.head;
+    //    return *this;
+    //}
+    //
+    //Response& Response::operator=(Response&& resp) noexcept
+    //{
+    //    SendFuncArgs = resp.SendFuncArgs;
+    //    SendFunc = resp.SendFunc;
+    //    SendBodyArgs = resp.SendBodyArgs;
+    //    SendBody = resp.SendBody;
+    //    Headers = resp.Headers;
+    //    head = resp.head;
+    //    return *this;
+    //}
 
     void Response::Finish()
     {
         Headers[WebUtility::HttpHeadersKey::Date] = WebUtility::ToGmtString(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
         for (const auto& [key, value] : Headers)
         {
-            head << WebUtility::HttpHeaders.at(key) << ": " << value << "\r\n";
+            String::StringCombine(head, WebUtility::HttpHeaders.at(key), ": ", value, "\r\n");
         }
-        head << "\r\n";
-        headBuf = head.str();
+        String::StringCombine(head, "\r\n");
     }
 
     bool Response::SendHead(const SocketType client) const
     {
-        if (send(client, headBuf.c_str(), headBuf.length(), 0) < 0) return false;
-        Log.Write("\n", headBuf);
+        IfFalseReturnFalse(SendFunc(client, head.c_str(), head.length(), SendBodyArgs))
+        Log.Write("\n", head);
         return true;
     }
 
-    bool Response::Send(const SocketType client, const bool headOnly)
+    bool Response::Send(const SocketType client, const bool headOnly) const
     {
         IfFalseReturnFalse(SendHead(client))
         if (!headOnly)
         {
             if (SendBody.has_value())
             {
-                IfFalseReturnFalse((**SendBody)(client, SendBodyArgs))
+                IfFalseReturnFalse((**SendBody)(client, SendFunc, SendFuncArgs, SendBodyArgs))
             }
         }
         return true;
     }
-
-    Response Response::FromStatusCodeHtml(const bool keepAlive, const uint16_t statusCode)
+	
+    bool Response::DefaultSendFunc(const SocketType client, const char* buf, const std::uint32_t len, const std::any&)
+    {
+        return !(send(client, buf, len, 0) < 0);
+    }
+	
+    Response Response::FromStatusCodeHtml(const bool keepAlive, const decltype(SendFunc) sendFunc, const std::any& sendFuncArgs,
+        const uint16_t statusCode)
     {
         std::string page;
         const auto sc = Convert::ToString(statusCode);
@@ -418,29 +444,31 @@ namespace KappaJuko
             "<body><h1>", sc, " - ", WebUtility::HttpStatusCodes.at(statusCode), "</h1><br/><hr>",
             ServerVersion,
             "</body></html>");
-        auto resp = FromHtml(keepAlive, page, statusCode);
+        auto resp = FromHtml(keepAlive, page, sendFunc, sendFuncArgs, statusCode);
         resp.Finish();
         return resp;
     }
-
-    Response Response::FromHtml(const bool keepAlive, const std::string& html, const uint16_t statusCode)
+	
+    Response Response::FromHtml(const bool keepAlive, const std::string& html, const decltype(SendFunc) sendFunc,
+	    const std::any& sendFuncArgs, const uint16_t statusCode)
     {
-        Response resp(keepAlive, statusCode);
+        Response resp(keepAlive, sendFunc, sendFuncArgs, statusCode);
         resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(html.length());
         resp.SendBodyArgs = html;
-    	static const auto func = [](const auto client, const std::any& args)
+    	static const auto Func = [](const auto client, decltype(SendFunc) sendFunc, const std::any& sendFuncArgs, const std::any& args)
         {
             const auto buf = std::any_cast<std::string>(args);
-            if (send(client, buf.c_str(), buf.length(), 0) < 0) return false;
+    		IfFalseReturnFalse(sendFunc(client, buf.c_str(), buf.length(), sendFuncArgs))
             return true;
-        };;
-        resp.SendBody = func;
+        };
+        resp.SendBody = Func;
         return resp;
     }
-
-    Response Response::FromFile(const bool keepAlive, const std::filesystem::path& path, const uint16_t statusCode)
+	
+    Response Response::FromFile(const bool keepAlive, const std::filesystem::path& path, const decltype(SendFunc) sendFunc,
+	    const std::any& sendFuncArgs, const uint16_t statusCode)
     {
-        Response resp(keepAlive, statusCode);
+        Response resp(keepAlive, sendFunc, sendFuncArgs, statusCode);
         const auto fileSize = file_size(path);
         const auto fileLastModified = WebUtility::FileLastModified(path);
         resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(fileSize);
@@ -448,18 +476,19 @@ namespace KappaJuko
         resp.Headers[WebUtility::HttpHeadersKey::ETag] = WebUtility::ETag(fileLastModified, fileSize);
         resp.Headers[WebUtility::HttpHeadersKey::CacheControl] = "max-age=31536000";
         resp.SendBodyArgs = path;
-        static const auto func = [](const auto client, const std::any& args)
+        static const auto Func = [](const auto client, decltype(SendFunc) sendFunc, const std::any& sendFuncArgs,
+                                    const std::any& args)
         {
             std::ifstream fs(std::any_cast<std::filesystem::path>(args), std::ios_base::in | std::ios_base::binary);
             char buf[4096];
             do
             {
                 fs.read(buf, 4096);
-                if (send(client, buf, fs.gcount(), 0) < 0) return false;
+                IfFalseReturnFalse(sendFunc(client, buf, fs.gcount(), sendFuncArgs))
             } while (!fs.eof());
             return true;
         };
-        resp.SendBody = func;
+        resp.SendBody = Func;
         return resp;
     }
 
@@ -578,25 +607,13 @@ namespace KappaJuko
         {
                 "--404",
                 "404 page",
-                Response::FromStatusCodeHtml(false, 404),
-                ArgumentsFunc(notFoundResponse)
-                {
-                    auto resp = Response::FromFile(false, Convert::ToString(value), 404);
-                    resp.Finish();
-                    return {resp, {}};
-                }
+        		std::filesystem::path{}
         };
         Argument<decltype(ForbiddenResponse)> forbiddenResponse
         {
                 "--403",
                 "403 page",
-                Response::FromStatusCodeHtml(false, 403),
-                ArgumentsFunc(forbiddenResponse)
-                {
-                    auto resp = Response::FromFile(false, Convert::ToString(value), 403);
-                    resp.Finish();
-                    return {resp, {}};
-                }
+                std::filesystem::path{}
         };
         Argument<decltype(IndexPages)> indexPages
         {
@@ -668,14 +685,14 @@ namespace KappaJuko
             return
             {
                     ArgumentsValue(rootPath),
+					ArgumentsValue(notFoundResponse),
+                    ArgumentsValue(forbiddenResponse),
                     ArgumentsValue(port),
                     ArgumentsValue(threadCount),
                     ArgumentsValue(ioModel),
                     autoIndexModeVal,
                     imageBoardVal,
                     ArgumentsValue(notFoundRedirect),
-                    ArgumentsValue(notFoundResponse),
-                    ArgumentsValue(forbiddenResponse),
                     ArgumentsValue(indexPages),
                     ArgumentsValue(logPath),
                     ArgumentsValue(logLevel),
@@ -810,6 +827,10 @@ namespace KappaJuko
         threadPool = std::vector<std::thread>();
         if (params.IoModel == NetworkIoModel::Blocking)
         {
+            static const auto SendFunc = Response::DefaultSendFunc;
+            static const std::any SendFuncArgs = {};
+            static const auto RecvFunc = Request::DefaultRecvFunc;
+            static const std::any RecvFuncArgs = {};
             for (auto i = 0; i < params.ThreadCount; ++i)
             {
                 threadPool.emplace_back([&](const auto id)
@@ -826,7 +847,17 @@ namespace KappaJuko
                         bool alive;
                         try
                         {
-                             alive = Work(client, clientAddr, false);
+                            WorkParams workParams
+                            {
+                            	client,
+                            	clientAddr,
+                            	false,
+                            	RecvFunc,
+                            	RecvFuncArgs,
+                            	SendFunc,
+                            	SendFuncArgs
+                            };
+                             alive = Work(workParams);
                         }
                         catch (const KappaJukoException& ex)
                         {
@@ -897,15 +928,19 @@ namespace KappaJuko
 #else
             epoll_event events[4096];
             auto epollFd = epoll_create(4096);
-            auto addEvent = [&](SocketType sock, decltype(events[0].events) status)
+            static const auto addEvent = [](const decltype(epollFd) epoll, const SocketType sock, const decltype(events[0].events) status)
             {
                 epoll_event ev;
                 ev.events = status;
                 ev.data.fd = sock;
-                epoll_ctl(epollFd, EPOLL_CTL_ADD, sock, &ev);
+                epoll_ctl(epoll, EPOLL_CTL_ADD, sock, &ev);
             };
             std::unordered_map<SocketType, sockaddr_in> addrs{};
             Thread::Channel<SocketType> msg{};
+            static const auto SendFunc = Response::DefaultSendFunc;
+            static const std::any SendFuncArgs = {};
+            static const auto RecvFunc = Request::DefaultRecvFunc;
+            static const std::any RecvFuncArgs = {};
             for (auto i = 0; i < params.ThreadCount; ++i)
             {
                 threadPool.emplace_back([&](const auto id)
@@ -916,7 +951,17 @@ namespace KappaJuko
                         bool alive;
                         try
                         {
-                            alive = Work(client, addrs.at(client), true);
+                            WorkParams workParams
+                            {
+                                client,
+                                addrs.at(client),
+                                true,
+                                RecvFunc,
+                                RecvFuncArgs,
+                                SendFunc,
+                                SendFuncArgs
+                            };
+                            alive = Work(workParams);
                         }
                         catch (const KappaJukoException& ex)
                         {
@@ -933,7 +978,7 @@ namespace KappaJuko
                     }
                 }, i);
             }
-            addEvent(serverSocket, EPOLLIN);
+            addEvent(epollFd, serverSocket, EPOLLIN);
             while (true)
             {
                 auto res = epoll_wait(epollFd, events, 4096, -1);
@@ -947,7 +992,7 @@ namespace KappaJuko
                         const auto client = accept(serverSocket, reinterpret_cast<sockaddr*>(&clientAddr), reinterpret_cast<socklen_t*>(&addrLen));
                         if (client <= 0) continue;
                         //fcntl(client, F_SETFL, fcntl(client, F_GETFL) | O_NONBLOCK);
-                        addEvent(client, EPOLLIN | EPOLLET);
+                        addEvent(epollFd, client, EPOLLIN | EPOLLET);
                         addrs[client] = clientAddr;
                     }
                     else if (events[i].events & EPOLLIN)
@@ -1052,8 +1097,17 @@ namespace KappaJuko
         return true;
     }
 
-    bool HttpServer::IndexOf(const std::filesystem::path& path, Request& request, Response& forbiddenResponse,
-							const bool keepAlive, const bool imageBoard, bool headOnly)
+    struct IndexOfFuncParams
+    {
+        const std::filesystem::path& Path;
+        const bool KeepAlive;
+        const bool ImageBoard;
+        bool HeadOnly;
+        decltype(Response::SendFunc) SendFunc;
+        std::any SendFuncArgs;
+    };
+	
+    static bool IndexOf(const IndexOfFuncParams& params, Request& request, Response& forbiddenResponse)
     {
         const auto client = request.Client;
         const auto indexOfPath = request.Path();
@@ -1084,7 +1138,7 @@ namespace KappaJuko
             "}"
             "</style>");
 
-        if (imageBoard)
+        if (params.ImageBoard)
         {
         	String::StringCombine(
             indexOfPage,
@@ -1142,18 +1196,27 @@ namespace KappaJuko
             "<body>"
             "<h1>Index of ", indexOfPath, "</h1><hr>");
 
-        if (!IndexOfBody(path, indexOfPage, imageBoard))
+        if (!IndexOfBody(params.Path, indexOfPage, params.ImageBoard))
         {
-            return forbiddenResponse.Send(client, headOnly);
+            return forbiddenResponse.Send(client, params.HeadOnly);
         }
         String::StringCombine(
             indexOfPage, "</body></html>");
-        auto indexOf = Response::FromHtml(keepAlive, indexOfPage, 200);
+        auto indexOf = Response::FromHtml(params.KeepAlive, indexOfPage, params.SendFunc, params.SendFuncArgs, 200);
         indexOf.Finish();
-        return indexOf.Send(client, headOnly);
+        return indexOf.Send(client, params.HeadOnly);
     }
 
-    static bool RangeResponse(const std::filesystem::path& path, SocketType client, const std::string& rangeHeader, const bool keepAlive, const bool headOnly = false)
+	template<typename T>
+    struct FuncAndArgs
+    {
+        T Func;
+        std::any Args;
+    };
+	
+    static bool RangeResponse(
+        const std::filesystem::path& path, const SocketType client, const FuncAndArgs<decltype(Response::SendFunc)>& sendFunc,
+        const std::string& rangeHeader, const bool keepAlive, const bool headOnly = false)
     {
         const auto fileSize = file_size(path);
         const auto range = rangeHeader.substr(5);
@@ -1181,7 +1244,7 @@ namespace KappaJuko
             }
             if ((start >= fileSize) || (end >= fileSize))
             {
-                Response notSatisfiable(keepAlive, 416);
+                Response notSatisfiable(keepAlive, sendFunc.Func, sendFunc.Args, 416);
                 std::string cr("*/");
                 cr.append(Convert::ToString(fileSize));
                 notSatisfiable.Headers[WebUtility::HttpHeadersKey::ContentRange] = cr;
@@ -1191,14 +1254,18 @@ namespace KappaJuko
             else
             {
                 const auto diff = end - start + 1;
-                Response resp(keepAlive, 206);
+                Response resp(keepAlive, sendFunc.Func, sendFunc.Args, 206);
                 resp.Headers[WebUtility::HttpHeadersKey::AcceptRanges] = "bytes";
                 resp.Headers[WebUtility::HttpHeadersKey::ContentLength] = std::to_string(diff);
-                std::ostringstream contextRange{};
-                contextRange << "bytes " << start << "-" << end << "/" << fileSize;
-                resp.Headers[WebUtility::HttpHeadersKey::ContentRange] = contextRange.str();
-                resp.SendBodyArgs = std::tuple<std::filesystem::path, std::uint64_t, std::uint64_t>(path, start, diff);
-                static const auto func = [](const auto client, const std::any& args)
+                std::string contextRange{};
+                String::StringCombine(
+                    contextRange, "bytes ", Convert::ToString(start), "-", Convert::ToString(end), "/", Convert::ToString(fileSize));
+                resp.Headers[WebUtility::HttpHeadersKey::ContentRange] = contextRange;
+                resp.SendBodyArgs = 
+                    std::tuple<std::filesystem::path, std::uint64_t, std::uint64_t>(
+                        path, start, diff);
+                static const auto Func = [](
+                    const auto client, decltype(Response::SendFunc) sendFunc, const std::any& sendFuncArgs, const std::any& args)
                 {
                     const auto& [path, start, diff] =
                         std::any_cast<std::tuple<std::filesystem::path, std::uint64_t, std::uint64_t>>(args);
@@ -1213,12 +1280,12 @@ namespace KappaJuko
 #endif
                         fs.read(buf, std::min(static_cast<decltype(diff)>(4096), diff - count));
                         const auto counted = fs.gcount();
-                        if (send(client, buf, counted, 0) < 0) return false;
+                    	IfFalseReturnFalse(sendFunc(client, buf, counted, sendFuncArgs));
                         count += counted;
                     }
                     return true;
                 };
-                resp.SendBody = func;
+                resp.SendBody = Func;
                 resp.Finish();
                 IfFalseReturnFalse(resp.Send(client, headOnly))
             }
@@ -1226,9 +1293,33 @@ namespace KappaJuko
         return true;
     }
 
-    bool HttpServer::Work(const SocketType client, const sockaddr_in& address, const bool keepAlive)
+    bool HttpServer::Work(const WorkParams& workParams)
     {
-        Request req(client, address);
+        const auto client = workParams.Client;
+        const auto address = workParams.Address;
+        const auto keepAlive = workParams.KeepAlive;
+        const auto sendFunc = workParams.SendFunc;
+        const auto sendFuncArgs = workParams.SendFuncArgs;
+        const auto recvFunc = workParams.RecvFunc;
+        const auto recvFuncArgs = workParams.RecvFuncArgs;
+        Request req(client, address, recvFunc, recvFuncArgs);
+        static auto staticPage = [](
+            const std::filesystem::path& path,
+            const std::uint16_t code,
+            const bool keepAlive,
+            const decltype(sendFunc) sendFunc,
+            const std::any& sendFuncArgs)
+        {
+            if (path.empty())
+            {
+                return Response::FromStatusCodeHtml(keepAlive, sendFunc, sendFuncArgs, code);
+            }
+            auto resp = Response::FromFile(keepAlive, path, sendFunc, sendFuncArgs, code);
+            resp.Finish();
+            return resp;
+        };
+        auto forbiddenResponse = staticPage(params.ForbiddenResponse, 403, keepAlive, sendFunc, sendFuncArgs);
+        auto notFoundResponse = staticPage(params.NotFoundResponse, 404, keepAlive, sendFunc, sendFuncArgs);
         try
         {
             if (Log.Level >= LogLevel::Info)
@@ -1237,15 +1328,12 @@ namespace KappaJuko
             }
             if (req.Raw.empty())
             {
-	            if (send(client, req.Raw.c_str(), req.Raw.length(), 0) < 0)
-	            {
-                    return false;
-	            }
+            	IfFalseReturnFalse(sendFunc(client, req.Raw.c_str(), req.Raw.length(), sendFuncArgs))
                 return keepAlive;
             }
             if (params.CgiHook.has_value())
             {
-                const auto cgi = (*(*params.CgiHook))(req);
+                const auto cgi = (**params.CgiHook)(req, sendFunc, sendFuncArgs, keepAlive);
                 if (cgi.has_value())
                 {
                     return *cgi;
@@ -1268,7 +1356,7 @@ namespace KappaJuko
                                 [](const auto& x) {return !(x == '/' || x == '\\'); }))));
             if (realPath.lexically_normal().u8string().find(params.RootPath.lexically_normal().u8string()) != 0)
             {
-                IfFalseReturnFalse(Response::FromStatusCodeHtml(keepAlive, 400).Send(client, headOnly))
+                IfFalseReturnFalse(Response::FromStatusCodeHtml(keepAlive, sendFunc, sendFuncArgs, 400).Send(client, headOnly))
                 return keepAlive;
             }
             switch (req.Method())
@@ -1284,25 +1372,41 @@ namespace KappaJuko
                         {
                             if (rawPath[rawPath.length() - 1] != '/')
                             {
-                                Response moveResp(keepAlive, 301);
+                                Response moveResp(keepAlive, sendFunc, sendFuncArgs, 301);
                                 moveResp.Headers[WebUtility::HttpHeadersKey::Location] = rawPath + "/";
                                 moveResp.Finish();
                                 IfFalseReturnFalse(moveResp.Send(client, headOnly))
                                 return keepAlive;
                             }
-                            if (!IndexOf(realPath, req, params.ForbiddenResponse, keepAlive, params.ImageBoard, headOnly))
+                            IndexOfFuncParams indexOfFuncParams
+                            {
+                                realPath,
+                                keepAlive,
+                                params.ImageBoard,
+                            	headOnly,
+                            	sendFunc,
+                            	sendFuncArgs
+                            };
+                            if (!IndexOf(indexOfFuncParams, req, forbiddenResponse))
                             {
                                 return false;
                             }
                             return keepAlive;
                         }
-                        const auto pos = std::find_if(
-                            params.IndexPages.begin(),
-                            params.IndexPages.end(),
-                            [&](const auto& index) { return exists(realPath / index); });
-                        if (pos == params.IndexPages.end())
+                        auto found = false;
+                        auto pos = params.IndexPages.begin();
+                        auto end = params.IndexPages.end();
+                        for (; pos != end; ++pos)
                         {
-                            IfFalseReturnFalse(params.ForbiddenResponse.Send(client, headOnly))
+	                        if(exists(realPath / *pos))
+	                        {
+                                found = true;
+	                        	break;
+	                        }
+                        }
+                        if (!found)
+                        {
+                            IfFalseReturnFalse(forbiddenResponse.Send(client, headOnly))
                             return keepAlive;
                         }
                         realPath /= *pos;
@@ -1315,7 +1419,7 @@ namespace KappaJuko
                         {
                             if (WebUtility::ETag(WebUtility::FileLastModified(realPath), file_size(realPath)) == *ifNoneMatch)
                             {
-                                Response resp(keepAlive, 304);
+                                Response resp(keepAlive, sendFunc, sendFuncArgs, 304);
                                 resp.Headers[WebUtility::HttpHeadersKey::ETag] = *ifNoneMatch;
                                 resp.Headers[WebUtility::HttpHeadersKey::CacheControl] = "max-age=31536000";
                                 if (ifModified.has_value())
@@ -1332,7 +1436,7 @@ namespace KappaJuko
                             const auto lm = WebUtility::ToGmtString(WebUtility::FileLastModified(realPath));
                             if (lm == *ifModified)
                             {
-                                Response resp(keepAlive, 304);
+                                Response resp(keepAlive, sendFunc, sendFuncArgs, 304);
                                 resp.Headers[WebUtility::HttpHeadersKey::LastModified] = *ifModified;
                                 resp.Headers[WebUtility::HttpHeadersKey::CacheControl] = "max-age=31536000";
                                 resp.Finish();
@@ -1354,10 +1458,15 @@ namespace KappaJuko
                         const auto rawRange = req.Header(WebUtility::HttpHeadersKey::Range);
                         if (rangeAllow && rawRange.has_value())
                         {
-	                        IfFalseReturnFalse(RangeResponse(realPath, client, *rawRange, keepAlive, headOnly))
+                            FuncAndArgs<decltype(Response::SendFunc)> sf
+                            {
+                                sendFunc,
+                                sendFuncArgs
+                            };
+	                        IfFalseReturnFalse(RangeResponse(realPath, client, sf, *rawRange, keepAlive, headOnly))
                             return keepAlive;
                         }
-                        auto resp = Response::FromFile(keepAlive, realPath, 200);
+                        auto resp = Response::FromFile(keepAlive, realPath, sendFunc, sendFuncArgs, 200);
                         auto ext = realPath.extension().u8string();
                         String::ToLower(ext);
                         auto pos = WebUtility::HttpContentType.find(ext);
@@ -1369,10 +1478,10 @@ namespace KappaJuko
                         IfFalseReturnFalse(resp.Send(req.Client, headOnly))
                         return keepAlive;
                     }
-                    IfFalseReturnFalse(params.ForbiddenResponse.Send(client, headOnly))
+                    IfFalseReturnFalse(forbiddenResponse.Send(client, headOnly))
                     return keepAlive;
                 }
-                IfFalseReturnFalse(params.NotFoundResponse.Send(client, headOnly))
+                IfFalseReturnFalse(notFoundResponse.Send(client, headOnly))
                 return keepAlive;
             case WebUtility::HttpMethod::PUT:
             case WebUtility::HttpMethod::DELETE:
@@ -1380,7 +1489,7 @@ namespace KappaJuko
             case WebUtility::HttpMethod::OPTIONS:
             case WebUtility::HttpMethod::TRACE:
             case WebUtility::HttpMethod::PATCH:
-                IfFalseReturnFalse(Response::FromStatusCodeHtml(keepAlive, 501).Send(client))
+                IfFalseReturnFalse(Response::FromStatusCodeHtml(keepAlive, sendFunc, sendFuncArgs, 501).Send(client))
                 return keepAlive;
             }
             return keepAlive;
@@ -1396,7 +1505,7 @@ namespace KappaJuko
             throw;
         }
     }
-
+	
     void HttpServer::DefaultLogThread()
     {
         std::ofstream fs{};

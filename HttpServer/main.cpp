@@ -1,4 +1,4 @@
-#include <chrono>
+#include <atomic>
 
 #include "HttpServer.h"
 #include "String.h"
@@ -8,11 +8,13 @@
 //#define CoffeeTest
 //#define AccessTest
 //#define UserTest
+//#define OnlineRegexText
 
 int main(const int argc, char* argv[])
 {
+#define IfFalseReturnFalse(x) if (!(x)) { return false; }
+	
 	auto lp = KappaJuko::LauncherParams::FromArgs(argc, argv);
-	static const auto KeepAlive = lp.IoModel == KappaJuko::NetworkIoModel::Multiplexing;
 	
 #ifdef FilterTest
 	static const std::vector<std::string_view> Allow =
@@ -68,28 +70,47 @@ R"(<!DOCTYPE html>
 		String::StringCombine(page, "</body></html>");
 		return page;
 	}();
-	static auto index = KappaJuko::Response::FromHtml(KeepAlive, IndexPage, 200);
-	index.Finish();
-	lp.CgiHook = [](KappaJuko::Request& req) -> std::optional<bool>
+	static const auto PageResp = [](const std::string& page, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+	{
+		auto resp = KappaJuko::Response::FromHtml(keepAlive, page, sendFunc, sendFuncArgs, 200);
+		resp.Finish();
+		return resp;
+	};
+	static const auto LocalResp = [](const std::string& url, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+	{
+		auto resp = KappaJuko::Response(keepAlive, sendFunc, sendFuncArgs, 302);
+		resp.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = url;
+		resp.Finish();
+		return resp;
+	};
+	static const auto CgiFunc = [](KappaJuko::Request& req, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs, const bool keepAlive) -> std::optional<bool>
 	{
 		const auto path = std::filesystem::u8path(req.Path()).lexically_normal().u8string();
 		KappaJuko::Log.Write(" [csp]\n", path);
 		if (path == "/" || path == "\\")
 		{
-			index.Send(req.Client);
-			return KeepAlive;
+			IfFalseReturnFalse(PageResp(IndexPage, keepAlive, sendFunc, sendFuncArgs).Send(req.Client))
+			return keepAlive;
 		}
-		const auto pos = std::find_if(Allow.begin(), Allow.end(), [&](const auto& x) { return path.find(x) == 0; });
-		if (pos == Allow.end())
+		auto found = false;
+		const auto end = Allow.end();
+		for (auto pos = Allow.begin(); pos != end; ++pos)
 		{
-			auto toIndex = KappaJuko::Response(KeepAlive, 302);
-			toIndex.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/";
-			toIndex.Finish();
-			toIndex.Send(req.Client);
-			return KeepAlive;
+			if (path.find(*pos) == 0)
+			{
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+		{
+			IfFalseReturnFalse(LocalResp("/", keepAlive, sendFunc, sendFuncArgs).Send(req.Client))
+			return keepAlive;
 		}
 		return std::nullopt;
 	};
+	
+	lp.CgiHook = CgiFunc;
 #endif
 
 #ifdef CoffeeTest

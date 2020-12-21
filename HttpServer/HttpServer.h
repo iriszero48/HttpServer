@@ -36,7 +36,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.8.2";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.9.0";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -48,7 +48,7 @@ namespace KappaJuko
 
 	ArgumentOptionHpp(LogLevel, None, Error, Info, Debug)
 	ArgumentOptionHpp(NetworkIoModel, Blocking, Multiplexing)
-
+	
 	class Logger
 	{
 	public:
@@ -307,20 +307,16 @@ namespace KappaJuko
 	class Request
 	{
 	public:
+		std::any RecvFuncArgs;
+		int(*RecvFunc)(SocketType, char*, std::uint16_t, const std::any&);
 		SocketType Client;
 		std::string Raw{};
-		std::any args{};
-		bool(*Send)(SocketType, const char const*, std::uint16_t, const std::any&);
-		
+
 		explicit Request(
 			SocketType sock,
 			const sockaddr_in& addr,
-			decltype(Send) sendFunc =
-				[](SocketType client, const char const* buf, std::uint16_t len, const std::any& args) -> bool
-				{
-			return !(send(client, buf, len, 0) < 0);
-				},
-			const std::any& args = {});
+			decltype(RecvFunc) recvFunc = DefaultRecvFunc,
+			std::any recvFuncArgs = {});
 
 		std::string Ip();
 		std::uint16_t Port();
@@ -331,6 +327,9 @@ namespace KappaJuko
 		std::optional<std::string> Get(const std::string& param);
 		std::optional<std::string> Cookie(const std::string& param);
 		std::optional<std::string> Post(const std::string& param);
+
+		static int DefaultRecvFunc(SocketType client, char* buf, std::uint16_t len, const std::any& args);
+
 	private:
 		sockaddr_in addr;
 
@@ -352,56 +351,74 @@ namespace KappaJuko
 	class Response
 	{
 	public:
+		std::any SendFuncArgs;
+		bool(*SendFunc)(SocketType, const char*, std::uint32_t, const std::any&);
 		std::any SendBodyArgs{};
-		std::optional<bool(*)(SocketType, const std::any&)> SendBody = std::nullopt;
+		std::optional<bool(*)(SocketType, decltype(SendFunc), const std::any&, const std::any&)> SendBody = std::nullopt;
 		std::map<WebUtility::HttpHeadersKey, std::string> Headers
 		{
 			{WebUtility::HttpHeadersKey::Server, std::string(ServerVersion)},
 		};
 
-		explicit Response(bool keepAlive, uint16_t statusCode = 200);
+		explicit Response(
+			bool keepAlive,
+			decltype(SendFunc) sendFunc = DefaultSendFunc,
+			std::any sendFuncArgs = {},
+			uint16_t statusCode = 200);
 		~Response() = default;
-		Response(const Response& resp);
-		Response(Response&& resp) noexcept;
-		Response& operator=(const Response& resp);
-		Response& operator=(Response&& resp) noexcept;
+		//Response(const Response& resp);
+		//Response(Response&& resp) noexcept;
+		//Response& operator=(const Response& resp);
+		//Response& operator=(Response&& resp) noexcept;
 
 		void Finish();
 
 		bool SendHead(SocketType client) const;
 
-		bool Send(SocketType client, bool headOnly = false);
+		bool Send(SocketType client, bool headOnly = false) const;
 
-		[[nodiscard]] static Response FromStatusCodeHtml(bool keepAlive, uint16_t statusCode);
+		static bool DefaultSendFunc(SocketType client, const char* buf, std::uint32_t len, const std::any& args);
 
-		[[nodiscard]] static Response FromHtml(bool keepAlive, const std::string& html, uint16_t statusCode = 200);
+		[[nodiscard]] static Response FromStatusCodeHtml(bool keepAlive, decltype(SendFunc) sendFunc, const std::any& sendFuncArgs, uint16_t statusCode);
 
-		[[nodiscard]] static Response FromFile(bool keepAlive, const std::filesystem::path& path, uint16_t statusCode = 200);
+		[[nodiscard]] static Response FromHtml(bool keepAlive, const std::string& html, decltype(SendFunc) sendFunc, const std::any& sendFuncArgs, uint16_t statusCode = 200);
+
+		[[nodiscard]] static Response FromFile(bool keepAlive, const std::filesystem::path& path, decltype(SendFunc) sendFunc, const std::any& sendFuncArgs, uint16_t statusCode = 200);
 
 	private:
-		std::ostringstream head{};
-		std::string headBuf;
+		std::string head{};
 	};
-	
+
 	struct LauncherParams
 	{
 		std::filesystem::path RootPath;
+		std::filesystem::path NotFoundResponse = {};
+		std::filesystem::path ForbiddenResponse = {};
 		uint16_t Port = 80;
 		uint16_t ThreadCount = 1;
 		NetworkIoModel IoModel = NetworkIoModel::Multiplexing;
 		bool AutoIndexMode = false;
 		bool ImageBoard = false;
 		bool NotFoundRedirect = false;
-		Response NotFoundResponse = Response::FromStatusCodeHtml(true, 404);
-		Response ForbiddenResponse = Response::FromStatusCodeHtml(true, 403);
 		std::vector<std::string_view> IndexPages = { "index.html" };
 		std::filesystem::path LogPath = "";
 		LogLevel LogFileLevel = LogLevel::Info;
 		bool ConsoleLog = true;
 		
-		std::optional<std::optional<bool>(*)(Request&)> CgiHook = std::nullopt;
+		std::optional<std::optional<bool>(*)(Request&, decltype(Response::SendFunc), const std::any&, bool)> CgiHook = std::nullopt;
 
 		[[nodiscard]] static LauncherParams FromArgs(int args, char** argv);
+	};
+
+	struct WorkParams
+	{
+		SocketType Client;
+		sockaddr_in Address;
+		bool KeepAlive;
+		decltype(Request::RecvFunc) RecvFunc;
+		std::any RecvFuncArgs;
+		decltype(Response::SendFunc) SendFunc;
+		std::any SendFuncArgs;
 	};
 
 	class KappaJukoException : public std::runtime_error { using std::runtime_error::runtime_error; };
@@ -417,7 +434,7 @@ namespace KappaJuko
 	
 	class HttpServer
 	{
-	public:
+	public:		
 		explicit HttpServer(LauncherParams params, const std::function<void()>& logThread = DefaultLogThread);
 		~HttpServer() = default;
 
@@ -430,15 +447,13 @@ namespace KappaJuko
 		void Init();
 		void Run();
 		void Close() const;
-
-		static bool IndexOf(const std::filesystem::path& path, Request& request, Response& forbiddenResponse, bool keepAlive, bool imageBoard = false, bool headOnly = false);
 		
 	private:
 		LauncherParams params;
 		SocketType serverSocket = -1;
 		std::vector<std::thread> threadPool = std::vector<std::thread>();
 
-		bool Work(SocketType client, const sockaddr_in& address, bool keepAlive);
+		bool Work(const WorkParams& workParams);
 
 		static void DefaultLogThread();
 	};
