@@ -1262,7 +1262,7 @@ namespace KappaJuko
                 }
                 else
                 {
-                    end = Convert::ToUint64(range.substr(spPos + 2));
+                    end = Convert::ToUint64(range.substr(spPos + 1));
                 }
             }
             else
