@@ -36,7 +36,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.9.0";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.9.1";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -405,7 +405,7 @@ namespace KappaJuko
 		LogLevel LogFileLevel = LogLevel::Info;
 		bool ConsoleLog = true;
 		
-		std::optional<std::optional<bool>(*)(Request&, decltype(Response::SendFunc), const std::any&, bool)> CgiHook = std::nullopt;
+		std::optional<std::optional<bool>(*)(Request&, decltype(Response::SendFunc), const std::any&, bool, const LauncherParams&)> CgiHook = std::nullopt;
 
 		[[nodiscard]] static LauncherParams FromArgs(int args, char** argv);
 	};

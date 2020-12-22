@@ -9,8 +9,12 @@
 #include <functional>
 #include <utility>
 
+#include "HttpServer.h"
+
 namespace CppServerPages
 {
+	class CppServerPagesException: public KappaJuko::KappaJukoException { using KappaJukoException::KappaJukoException; };
+	
 	struct Session
 	{
 		std::optional<std::string> User;

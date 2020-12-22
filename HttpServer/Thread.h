@@ -26,6 +26,11 @@ namespace Thread
             return item;
         }
 
+        auto Length() const
+        {
+            return buffer.size();
+        }
+    	
     private:
         std::list<T> buffer{};
         std::mutex mtx{};

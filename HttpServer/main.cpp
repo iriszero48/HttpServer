@@ -3,6 +3,7 @@
 #include "HttpServer.h"
 #include "String.h"
 #include "CppServerPages.h"
+#include "Exception.h"
 
 #define FilterTest
 //#define CoffeeTest
@@ -10,32 +11,45 @@
 //#define UserTest
 //#define OnlineRegexText
 
-int main(const int argc, char* argv[])
-{
 #define IfFalseReturnFalse(x) if (!(x)) { return false; }
-	
-	auto lp = KappaJuko::LauncherParams::FromArgs(argc, argv);
-	
+#define CspThrow(ex, ...) ExceptionThrow(ex, __VA_ARGS__, "\n    at ", MacroFunctionName, "(" __FILE__ ":" MacroLine ")")
+
 #ifdef FilterTest
-	static const std::vector<std::string_view> Allow =
-	{
+
+static auto PageResp(const std::string& page, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+{
+	auto resp = KappaJuko::Response::FromHtml(keepAlive, page, sendFunc, sendFuncArgs, 200);
+	resp.Finish();
+	return resp;
+};
+
+static auto LocalResp(const std::string& url, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+{
+	auto resp = KappaJuko::Response(keepAlive, sendFunc, sendFuncArgs, 302);
+	resp.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = url;
+	resp.Finish();
+	return resp;
+};
+
+static const std::vector<std::string_view> Allow =
+{
 #ifdef MacroWindows
 		"\\Danbooru2018", "\\Library"
 #else
 		"/f", "/k/Library", "/m/Share"
 #endif
-	};
+};
 
-	static const auto IndexPage = []()
-	{
-		std::string page =
-R"(<!DOCTYPE html>
+static const auto IndexPage = []()
+{
+	std::string page =
+		R"(<!DOCTYPE html>
 <html>
 	<head>
 		<title>Index of /</title>
 		<meta charset="utf-8">
 		<style type="text/css">
-			body {background: #222;color: #ddd;font-family: "Lato", "Hiragino Sans GB", "Source Han Sans SC", "Source Han Sans CN", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "WenQuanYi Micro Hei", "Î¢ÈíÑÅºÚ", sans-serif;}
+			body {background: #222;color: #ddd;font-family: "Lato", "Hiragino Sans GB", "Source Han Sans SC", "Source Han Sans CN", "Noto Sans CJK SC", "WenQuanYi Zen Hei", "WenQuanYi Micro Hei", "å¾®è½¯é›…é»‘", sans-serif;}
 			a {text-decoration: none;}
 			a:link, a:visited {color: #6793cf;}
 			a:hover, a:active, a:focus {color: #62bbe7;}
@@ -63,34 +77,24 @@ R"(<!DOCTYPE html>
 	</head>
 	<body>
 		<h1>Index of /</h1><hr>)";
-		for (const auto& dir : Allow)
-		{
-			String::StringCombine(page, "<a href=\"", dir, "/\">", dir, "/</a><br>");
-		}
-		String::StringCombine(page, "</body></html>");
-		return page;
-	}();
-	static const auto PageResp = [](const std::string& page, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+	for (const auto& dir : Allow)
 	{
-		auto resp = KappaJuko::Response::FromHtml(keepAlive, page, sendFunc, sendFuncArgs, 200);
-		resp.Finish();
-		return resp;
-	};
-	static const auto LocalResp = [](const std::string& url, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
-	{
-		auto resp = KappaJuko::Response(keepAlive, sendFunc, sendFuncArgs, 302);
-		resp.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = url;
-		resp.Finish();
-		return resp;
-	};
-	static const auto CgiFunc = [](KappaJuko::Request& req, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs, const bool keepAlive) -> std::optional<bool>
+		String::StringCombine(page, "<a href=\"", dir, "/\">", dir, "/</a><br>");
+	}
+	String::StringCombine(page, "</body></html>");
+	return page;
+}();
+
+static auto CgiFunc(KappaJuko::Request& req, const decltype(KappaJuko::Response::SendFunc) sendFunc, 
+	const std::any& sendFuncArgs, const bool keepAlive, const KappaJuko::LauncherParams& params) -> std::optional<bool>
+{
+	try
 	{
 		const auto path = std::filesystem::u8path(req.Path()).lexically_normal().u8string();
-		KappaJuko::Log.Write(" [csp]\n", path);
 		if (path == "/" || path == "\\")
 		{
 			IfFalseReturnFalse(PageResp(IndexPage, keepAlive, sendFunc, sendFuncArgs).Send(req.Client))
-			return keepAlive;
+				return keepAlive;
 		}
 		auto found = false;
 		const auto end = Allow.end();
@@ -105,11 +109,23 @@ R"(<!DOCTYPE html>
 		if (!found)
 		{
 			IfFalseReturnFalse(LocalResp("/", keepAlive, sendFunc, sendFuncArgs).Send(req.Client))
-			return keepAlive;
+				return keepAlive;
 		}
 		return std::nullopt;
-	};
-	
+	}
+	catch (const std::exception& ex)
+	{
+		CspThrow(CppServerPages::CppServerPagesException, ex.what(), " in Filter.csp");
+	}
+};
+
+#endif
+
+
+int main(const int argc, char* argv[])
+{
+	auto lp = KappaJuko::LauncherParams::FromArgs(argc, argv);
+#ifdef FilterTest
 	lp.CgiHook = CgiFunc;
 #endif
 
@@ -322,5 +338,17 @@ R"(<!DOCTYPE html>
 
 	KappaJuko::HttpServer server(lp);
 	server.Init();
-	server.Run();
+	try
+	{
+		server.Run();
+	}
+	catch (const std::exception& ex)
+	{
+		while (KappaJuko::Log.Chan.Length() != 0)
+		{
+			using namespace std::chrono_literals;
+			std::this_thread::sleep_for(+1s);
+		}
+		fputs(ex.what(), stderr);
+	}
 }
