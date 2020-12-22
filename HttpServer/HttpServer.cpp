@@ -824,8 +824,16 @@ namespace KappaJuko
 
         return 0;
     }
+#else
+    static void addEvent(const decltype(epollFd) epoll, const SocketType sock, const decltype(events[0].events) status)
+    {
+        epoll_event ev;
+        ev.events = status;
+        ev.data.fd = sock;
+        epoll_ctl(epoll, EPOLL_CTL_ADD, sock, &ev);
+    };
 #endif
-
+	
     void HttpServer::Run()
     {
         threadPool = std::vector<std::thread>();
@@ -930,15 +938,8 @@ namespace KappaJuko
                 }
             }
 #else
-            epoll_event events[4096];
+            epoll_event events[4096] = {0};
             auto epollFd = epoll_create(4096);
-            static const auto addEvent = [](const decltype(epollFd) epoll, const SocketType sock, const decltype(events[0].events) status)
-            {
-                epoll_event ev;
-                ev.events = status;
-                ev.data.fd = sock;
-                epoll_ctl(epoll, EPOLL_CTL_ADD, sock, &ev);
-            };
             std::unordered_map<SocketType, sockaddr_in> addrs{};
             Thread::Channel<SocketType> msg{};
             static const auto SendFunc = Response::DefaultSendFunc;
