@@ -825,7 +825,7 @@ namespace KappaJuko
         return 0;
     }
 #else
-    static void addEvent(const decltype(epollFd) epoll, const SocketType sock, const decltype(events[0].events) status)
+    static void addEvent(const int epoll, const SocketType sock, const decltype(epoll_event{}.events) status)
     {
         epoll_event ev;
         ev.events = status;
