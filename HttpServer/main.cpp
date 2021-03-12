@@ -5,11 +5,12 @@
 #include "CppServerPages.h"
 #include "Exception.h"
 
-#define FilterTest
+//#define FilterTest
 //#define CoffeeTest
 //#define AccessTest
-//#define UserTest
+#define UserTest
 //#define OnlineRegexText
+//#define RandomTest
 
 #define IfFalseReturnFalse(x) if (!(x)) { return false; }
 #define CspThrow(ex, ...) ExceptionThrow(ex, __VA_ARGS__, "\n    at ", MacroFunctionName, "(" __FILE__ ":" MacroLine ")")
@@ -121,6 +122,310 @@ static auto CgiFunc(KappaJuko::Request& req, const decltype(KappaJuko::Response:
 
 #endif
 
+#ifdef UserTest
+
+static std::string loginPage =
+	"<!DOCTYPE html>"
+	"<html>"
+		"<head>"
+			"<title>index</title>"
+		"</head>"
+		"<body>"
+			"<form action=\"\" method=\"POST\">"
+				"username:<input type=\"text\" name=\"username\"><br>"
+				"password:<input type=\"password\" name=\"password\"><br>"
+				"<input type=\"submit\" value=\"login\">"
+				"<a href=\"register.cpp\">register</a>"
+			"</form>"
+		"</body>"
+	"</html>";
+
+static std::string registerPage =
+	"<!DOCTYPE html>"
+	"<html>"
+		"<head>"
+			"<title>index</title>"
+		"</head>"
+		"<body>"
+			"<form action=\"\" method=\"POST\">"
+				"username:<input type=\"text\" name=\"username\"><br>"
+				"password:<input type=\"password\" name=\"password\"><br>"
+				"<input type=\"submit\" value=\"register\">"
+			"</form>"
+		"</body>"
+	"</html>";
+
+static CppServerPages::Database<std::string, std::string> userDb{};
+
+bool ToLogin(KappaJuko::Request& req, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+{
+	auto lg = KappaJuko::Response::FromHtml(keepAlive, loginPage, sendFunc, sendFuncArgs);
+	lg.Finish();
+	IfFalseReturnFalse(lg.Send(req.Client))
+		return keepAlive;
+}
+
+bool RedToLogin(KappaJuko::Request& req, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+{
+	KappaJuko::Response toLogin(keepAlive, sendFunc, sendFuncArgs, 302);
+	toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/login.cpp";
+	toLogin.Finish();
+	IfFalseReturnFalse(toLogin.Send(req.Client))
+		return keepAlive;
+}
+
+bool RedToIndex(KappaJuko::Request& req, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+{
+	KappaJuko::Response toLogin(keepAlive, sendFunc, sendFuncArgs, 302);
+	toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/index.cpp";
+	toLogin.Finish();
+	IfFalseReturnFalse(toLogin.Send(req.Client))
+		return keepAlive;
+}
+
+bool Login(KappaJuko::Request& req, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+{
+	const auto sessid = req.Cookie("KJSESSID");
+	if (req.Method() == KappaJuko::WebUtility::HttpMethod::GET)
+	{
+		if (sessid.has_value())
+		{
+			const auto sessidDb = CppServerPages::Sessions.Get(*sessid);
+			if (sessidDb.has_value())
+			{
+				if (sessidDb->User.has_value())
+				{
+					return RedToIndex(req, keepAlive, sendFunc, sendFuncArgs);
+				}
+				return ToLogin(req, keepAlive, sendFunc, sendFuncArgs);
+			}
+		}
+		return ToLogin(req, keepAlive, sendFunc, sendFuncArgs);
+	}
+	if (req.Method() == KappaJuko::WebUtility::HttpMethod::POST)
+	{
+		if (sessid.has_value())
+		{
+			const auto sessidDb = CppServerPages::Sessions.Get(*sessid);
+			if (sessidDb.has_value())
+			{
+				if (sessidDb->User.has_value())
+				{
+					return RedToIndex(req, keepAlive, sendFunc, sendFuncArgs);
+				}
+				const auto un = req.Post("username").value_or("");
+				const auto pos = userDb.Get(un).value_or("");
+				if (!pos.empty() && pos == req.Post("password").value_or(""))
+				{
+					CppServerPages::Sessions.Set(*sessid, { un, std::chrono::system_clock::now() });
+					return RedToIndex(req, keepAlive, sendFunc, sendFuncArgs);
+				}
+				std::string errorPage =
+					"<!DOCTYPE html>"
+					"<html>"
+						"<head>"
+							"<title>index</title>"
+						"</head>"
+						"<body>"
+							"<h1>Invalid Username/Password!</h1>"
+						"</body>"
+					"</html>";
+				auto error = KappaJuko::Response::FromHtml(keepAlive, errorPage, sendFunc, sendFuncArgs);
+				error.Finish();
+				IfFalseReturnFalse(error.Send(req.Client))
+				return keepAlive;
+			}
+		}
+	}
+	return keepAlive;
+}
+
+bool RedToRegister(KappaJuko::Request& req, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+{
+	KappaJuko::Response toLogin(keepAlive, sendFunc, sendFuncArgs, 302);
+	toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/register.cpp";
+	toLogin.Finish();
+	IfFalseReturnFalse(toLogin.Send(req.Client))
+		return keepAlive;
+}
+
+bool Register(KappaJuko::Request& req, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+{
+	if (req.Method() == KappaJuko::WebUtility::HttpMethod::GET)
+	{
+		auto lg = KappaJuko::Response::FromHtml(keepAlive, registerPage, sendFunc, sendFuncArgs);
+		lg.Finish();
+		IfFalseReturnFalse(lg.Send(req.Client))
+			return keepAlive;
+	}
+	if (req.Method() == KappaJuko::WebUtility::HttpMethod::POST)
+	{
+		const auto un = req.Post("username").value_or("");
+		const auto pos = userDb.Get(un).value_or("");
+		if (pos.empty())
+		{
+			const auto pw = req.Post("password").value_or("");
+			if (!pw.empty())
+			{
+				userDb.Set(un, pw);
+				std::string succeedPage =
+					"<!DOCTYPE html>"
+					"<html>"
+					"<head>"
+					"<title>Register</title>"
+					"</head>"
+					"<body>"
+					"<h1>Register succeed!</h1>"
+					"</body>"
+					"</html>";
+				auto succ = KappaJuko::Response::FromHtml(keepAlive, succeedPage, sendFunc, sendFuncArgs);
+				succ.Finish();
+				IfFalseReturnFalse(succ.Send(req.Client))
+					return keepAlive;
+			}
+			std::string errorPage =
+				"<!DOCTYPE html>"
+				"<html>"
+				"<head>"
+				"<title>Error</title>"
+				"</head>"
+				"<body>"
+				"<h1>java.lang.NullPointerException</h1>"
+				"</body>"
+				"</html>";
+			auto error = KappaJuko::Response::FromHtml(keepAlive, errorPage, sendFunc, sendFuncArgs);
+			error.Finish();
+			IfFalseReturnFalse(error.Send(req.Client))
+				return keepAlive;
+		}
+		std::string errorPage =
+			"<!DOCTYPE html>"
+			"<html>"
+				"<head>"
+					"<title>Error</title>"
+				"</head>"
+				"<body>"
+					"<h1>Username Existed!</h1>"
+				"</body>"
+			"</html>";
+		auto error = KappaJuko::Response::FromHtml(keepAlive, errorPage, sendFunc, sendFuncArgs);
+		error.Finish();
+		IfFalseReturnFalse(error.Send(req.Client))
+			return keepAlive;
+	}
+	return keepAlive;
+}
+
+bool ToLogicWithNewSessid(KappaJuko::Request& req, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+{
+	KappaJuko::Response toLogin(keepAlive, sendFunc, sendFuncArgs, 302);
+	toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/login.cpp";
+	const auto newSessid = CppServerPages::GenerateSessionId();
+	CppServerPages::Sessions.Set(newSessid, { {}, std::chrono::system_clock::now() });
+	std::string ck{};
+	String::StringCombine(ck, "KJSESSID=", newSessid, "; HttpOnly");
+	toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::SetCookie] = ck;
+	toLogin.Finish();
+	IfFalseReturnFalse(toLogin.Send(req.Client))
+		return keepAlive;
+};
+
+bool Index(KappaJuko::Request& req, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+{
+	const auto sessid = req.Cookie("KJSESSID");
+	if (!sessid.has_value())
+	{
+		return ToLogicWithNewSessid(req, keepAlive, sendFunc, sendFuncArgs);
+	}
+	const auto sessidDb = CppServerPages::Sessions.Get(*sessid);
+	if (!sessidDb.has_value())
+	{
+		return ToLogicWithNewSessid(req, keepAlive, sendFunc, sendFuncArgs);
+	}
+	if (!sessidDb->User.has_value())
+	{
+		return RedToLogin(req, keepAlive, sendFunc, sendFuncArgs);
+	}
+	std::string boardPage{};
+	String::StringCombine(boardPage,
+		"<!DOCTYPE html>"
+		"<html>"
+			"<head>"
+				"<title>index.cpp</title>"
+			"</head>"
+			"<body>"
+				"<h1>Hello, ", *sessidDb->User, "!</h1>"
+				"<a href=\"logout.cpp\">logout</a>"
+			"</body>"
+		"</html>");
+	auto board = KappaJuko::Response::FromHtml(keepAlive, boardPage, sendFunc, sendFuncArgs);
+	board.Finish();
+	IfFalseReturnFalse(board.Send(req.Client))
+		return keepAlive;
+}
+
+bool Logout(KappaJuko::Request& req, const bool keepAlive, const decltype(KappaJuko::Response::SendFunc) sendFunc, const std::any& sendFuncArgs)
+{
+	const auto sessid = req.Cookie("KJSESSID");
+	if (!sessid.has_value())
+	{
+		return ToLogicWithNewSessid(req, keepAlive, sendFunc, sendFuncArgs);
+	}
+	const auto sessidDb = CppServerPages::Sessions.Get(*sessid);
+	if (!sessidDb.has_value())
+	{
+		return ToLogicWithNewSessid(req, keepAlive, sendFunc, sendFuncArgs);
+	}
+	if (!sessidDb->User.has_value())
+	{
+		return RedToIndex(req, keepAlive, sendFunc, sendFuncArgs);
+	}
+	CppServerPages::Sessions.Set(*sessid, { {}, std::chrono::system_clock::now() });
+	std::string boardPage =
+		"<!DOCTYPE html>"
+		"<html>"
+		"<head>"
+		"<title>logout.cpp</title>"
+		"</head>"
+		"<body>"
+		"<h1>logout!</h1>"
+		"</body>"
+		"</html>";
+	auto board = KappaJuko::Response::FromHtml(keepAlive, boardPage, sendFunc, sendFuncArgs);
+	board.Finish();
+	IfFalseReturnFalse(board.Send(req.Client))
+		return keepAlive;
+}
+
+static std::unordered_map<std::string, bool(*)(KappaJuko::Request&, bool, decltype(KappaJuko::Response::SendFunc), const std::any&)> route
+{
+	{"/login.cpp", Login},
+	{"/register.cpp", Register},
+	{"/index.cpp", Index},
+	{"/logout.cpp", Logout},
+	{"/", Index},
+};
+
+static auto CgiFunc(KappaJuko::Request& req, const decltype(KappaJuko::Response::SendFunc) sendFunc,
+	const std::any& sendFuncArgs, const bool keepAlive, const KappaJuko::LauncherParams& params) -> std::optional<bool>
+{
+	try
+	{
+		const auto func = route.find(req.Path());
+		if (func != route.end())
+		{
+			return func->second(req, keepAlive, sendFunc, sendFuncArgs);
+		}
+		return std::nullopt;
+	}
+	catch (const std::exception& ex)
+	{
+		CspThrow(CppServerPages::CppServerPagesException, ex.what(), " in Filter.csp");
+	}
+};
+
+
+#endif
 
 int main(const int argc, char* argv[])
 {
@@ -155,187 +460,15 @@ int main(const int argc, char* argv[])
 #endif
 
 #ifdef UserTest
-	std::ostringstream loginPage{};
-	loginPage <<
-		"<!DOCTYPE html>"
-		"<html>"
-			"<head>"
-				"<title>index</title>"
-			"</head>"
-			"<body>"
-				"<form action=\"\" method=\"POST\">"
-					"username:<input type=\"text\" name=\"username\"><br>"
-					"password:<input type=\"password\" name=\"password\"><br>"
-					"<input type=\"submit\" value=\"login\">"
-				"</form>"
-			"</body>"
-		"</html>";
-
-	std::ostringstream registerPage{};
-	registerPage <<
-		"<!DOCTYPE html>"
-		"<html>"
-			"<head>"
-				"<title>index</title>"
-			"</head>"
-			"<body>"
-				"<form action=\"\" method=\"POST\">"
-					"username:<input type=\"text\" name=\"username\"><br>"
-					"password:<input type=\"password\" name=\"password\"><br>"
-					"<input type=\"submit\" value=\"register\">"
-				"</form>"
-			"</body>"
-		"</html>";
-
-	CppServerPages::Database<std::string, std::string> userDb{};
 	userDb.Set("root", "toor");
 	userDb.Set("test", "test");
-	
-	std::unordered_map<std::string, std::function<bool(KappaJuko::Request&)>> route
-	{
-		{"/login.cpp", [&](KappaJuko::Request& req)
-		{
-			const auto sessid = req.Cookie("KJSESSID");
-			if (req.Method() == KappaJuko::WebUtility::HttpMethod::GET)
-			{
-				if (sessid.has_value())
-				{
-					const auto sessidDb = CppServerPages::Sessions.Get(*sessid);
-					if (sessidDb.has_value())
-					{
-						if (sessidDb->User.has_value())
-						{
-							KappaJuko::Response toLogin(302);
-							toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/index.cpp";
-							toLogin.Finish();
-							toLogin.Send(req.Client);
-							return true;
-						}
-						auto lg = KappaJuko::Response::FromHtml(loginPage);
-						lg.Finish();
-						lg.Send(req.Client);
-						return true;
-					}
-				}
-				auto lg = KappaJuko::Response::FromHtml(loginPage);
-				lg.Send(req.Client);
-				return true;
-			}
-			if (req.Method() == KappaJuko::WebUtility::HttpMethod::POST)
-			{
-				if (sessid.has_value())
-				{
-					const auto sessidDb = CppServerPages::Sessions.Get(*sessid);
-					if (sessidDb.has_value())
-					{
-						if (sessidDb->User.has_value())
-						{
-							KappaJuko::Response toLogin(302);
-							toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/index.cpp";
-							toLogin.Finish();
-							toLogin.Send(req.Client);
-							return true;
-						}
-						const auto un = req.Post("username").value_or("");
-						const auto pos = userDb.Get(un).value_or("");
-						if (!pos.empty() && pos == req.Post("password").value_or(""))
-						{
-							CppServerPages::Sessions.Set(*sessid, { un, std::chrono::system_clock::now() });
-							KappaJuko::Response toLogin(302);
-							toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/index.cpp";
-							toLogin.Finish();
-							toLogin.Send(req.Client);
-							return true;
-						}
-						std::ostringstream errorPage{};
-						errorPage <<
-							"<!DOCTYPE html>"
-							"<html>"
-							"<head>"
-							"<title>index</title>"
-							"</head>"
-							"<body>"
-							"<h1>Invalid Username/Password!</h1>"
-							"</body>"
-							"</html>";
-						auto error = KappaJuko::Response::FromHtml(errorPage);
-						error.Finish();
-						error.Send(req.Client);
-						return true;
-					}
-				}
-				
-			}
-			return false;
-		}},
-		{"/register.cpp", [&](KappaJuko::Request& req)
-		{
-
-			return false;
-		}},
-		{"/index.cpp", [&](KappaJuko::Request& req)
-		{
-			const auto sessid = req.Cookie("KJSESSID");
-			const auto toLogicWithNewSessid = [&]()
-			{
-				KappaJuko::Response toLogin(302);
-				toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/login.cpp";
-				const auto newSessid = CppServerPages::GenerateSessionId();
-				CppServerPages::Sessions.Set(newSessid, { {}, std::chrono::system_clock::now() });
-				std::string ck{};
-				String::StringCombine(ck, "KJSESSID=", newSessid, "; HttpOnly");
-				toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::SetCookie] = ck;
-				toLogin.Finish();
-				toLogin.Send(req.Client);
-			};
-			if (!sessid.has_value())
-			{
-				toLogicWithNewSessid();
-				return true;
-			}
-			const auto sessidDb = CppServerPages::Sessions.Get(*sessid);
-			if (!sessidDb.has_value())
-			{
-				toLogicWithNewSessid();
-				return true;
-			}
-			if (!sessidDb->User.has_value())
-			{
-				KappaJuko::Response toLogin(302);
-				toLogin.Headers[KappaJuko::WebUtility::HttpHeadersKey::Location] = "/login.cpp";
-				toLogin.Finish();
-				toLogin.Send(req.Client);
-				return true;
-			}
-			std::ostringstream boardPage{};
-			boardPage <<
-				"<!DOCTYPE html>"
-				"<html>"
-				"<head>"
-					"<title>index.cpp</title>"
-				"</head>"
-					"<body>"
-						"<h1>Hello, " << *sessidDb->User << "!</h1>"
-					"</body>"
-				"</html>";
-			auto board = KappaJuko::Response::FromHtml(boardPage);
-			board.Finish();
-			board.Send(req.Client);
-			return true;
-		}},
-	};
-	
-	lp.CgiHook = [&](KappaJuko::Request& req)
-	{
-		const auto func = route.find(req.Path());
-		if (func != route.end())
-		{
-			return func->second(req);
-		}
-		return false;
-	};
+	lp.CgiHook = CgiFunc;
 #endif
 
+#ifdef RandomTest
+	
+#endif
+	
 	KappaJuko::HttpServer server(lp);
 	server.Init();
 	try
