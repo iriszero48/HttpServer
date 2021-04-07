@@ -9,8 +9,8 @@
 #include <future>
 
 #include "Arguments.h"
-#include "Thread.h"
 #include "Macro.h"
+#include "Log.h"
 
 #ifdef MacroWindows
 
@@ -36,7 +36,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.9.4";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.11.0";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -46,46 +46,23 @@ namespace KappaJuko
 		int;
 #endif
 
-	ArgumentOptionHpp(LogLevel, None, Error, Info, Debug)
 	ArgumentOptionHpp(NetworkIoModel, Blocking, Multiplexing)
 	
-	class Logger
-	{
-	public:
-		LogLevel Level = LogLevel::Info;
-		std::filesystem::path File = {};
-		bool Console = true;
-
-		using MsgType = std::tuple<
-			LogLevel,
-			decltype(std::chrono::system_clock::now()),
-			decltype(std::this_thread::get_id()), std::string>;
-		std::thread LogThread{};
-		Thread::Channel<MsgType> Chan{};
-		
-		template<LogLevel Level = LogLevel::Info, class...Args>
-		void Write(Args&&... args)
-		{
-			WriteImpl<Level>(std::this_thread::get_id(), std::forward<Args>(args)...);
-		}
-
-		template<LogLevel Level = LogLevel::Info, class...Args>
-		std::future<void> WriteAsync(Args&&... args)
-		{
-			return std::async(WriteImpl<Level>, std::launch::async, std::this_thread::get_id(), std::forward<Args>(args)...);
-		}
-		
-	private:
-		template<LogLevel Level, class...Args>
-		void WriteImpl(decltype(std::this_thread::get_id()) id, Args&&... args)
-		{
-			std::string msg{};
-			(msg.append(args), ...);
-			Chan.Write(MsgType(Level, std::chrono::system_clock::now(), id, msg));
-		}
-	};
+	using MsgType = std::tuple<
+		decltype(std::chrono::system_clock::now()),
+		decltype(std::this_thread::get_id()),
+		std::string
+	>;
 	
-	static Logger Log{};
+	static Logger<MsgType> Log{};
+	static std::thread LogThread{};
+
+#define LogImpl(level, ...) Log.Write<level>(std::chrono::system_clock::now(), std::this_thread::get_id(), String::StringCombineNew(__VA_ARGS__))
+#define LogNone(...) LogImpl(LogLevel::None, __VA_ARGS__)
+#define LogError(...) LogImpl(LogLevel::Error, __VA_ARGS__)
+#define LogLog(...) LogImpl(LogLevel::Log, __VA_ARGS__)
+#define LogInfo(...) LogImpl(LogLevel::Info, __VA_ARGS__)
+#define LogDebug(...) LogImpl(LogLevel::Debug, __VA_ARGS__)
 	
 	namespace WebUtility
 	{		
@@ -434,8 +411,9 @@ namespace KappaJuko
 	
 	class HttpServer
 	{
-	public:		
-		explicit HttpServer(LauncherParams params, const std::function<void()>& logThread = DefaultLogThread);
+	public:
+		explicit HttpServer(LauncherParams params);
+		explicit HttpServer(LauncherParams params, const std::function<void(const LauncherParams&)>& logThread);
 		~HttpServer() = default;
 
 		HttpServer() = delete;
@@ -455,6 +433,6 @@ namespace KappaJuko
 
 		bool Work(const WorkParams& workParams);
 
-		static void DefaultLogThread();
+		static void DefaultLogThread(LogLevel Level, const std::filesystem::path& File, bool Console);
 	};
 }

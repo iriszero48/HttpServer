@@ -477,11 +477,7 @@ int main(const int argc, char* argv[])
 	}
 	catch (const std::exception& ex)
 	{
-		while (KappaJuko::Log.Chan.Length() != 0)
-		{
-			using namespace std::chrono_literals;
-			std::this_thread::sleep_for(+1s);
-		}
+		KappaJuko::Log.Write<LogLevel::None>(std::chrono::system_clock::now(), std::this_thread::get_id(), "Server exit...");
 		fputs(ex.what(), stderr);
 	}
 }

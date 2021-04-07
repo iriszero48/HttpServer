@@ -45,6 +45,9 @@
     <ClInclude Include="CppServerPages.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Log.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="HttpServer.cpp">
@@ -56,18 +59,19 @@
     <ClCompile Include="Arguments.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Convert.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="Time.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="CppServerPages.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="Log.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="cpp.hint" />
+    <None Include="ClassDiagram.cd" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="CMakeLists.txt" />

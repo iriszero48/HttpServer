@@ -6,6 +6,22 @@
 
 namespace Thread
 {
+    template<typename Func>
+    struct Synchronize
+    {
+        std::mutex Mtx{};
+        Func F;
+
+        explicit Synchronize(const Func& func) : F(func) {}
+
+        template<typename ...Args>
+        decltype(auto) operator()(Args&&...args)
+        {
+            std::lock_guard<decltype(Mtx)> lock(Mtx);
+            return F(std::forward<Args>(args)...);
+        }
+    };
+
     template<typename T>
     class Channel
     {
@@ -14,6 +30,7 @@ namespace Thread
         {
             std::unique_lock<std::mutex> lock(mtx);
             buffer.push_back(data);
+            lock.unlock();
             cv.notify_all();
         }
 
@@ -26,11 +43,11 @@ namespace Thread
             return item;
         }
 
-        auto Length() const
+        [[nodiscard]] auto Length() const
         {
             return buffer.size();
         }
-    	
+
     private:
         std::list<T> buffer{};
         std::mutex mtx{};
