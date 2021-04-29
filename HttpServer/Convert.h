@@ -53,14 +53,14 @@ namespace Convert
 	{
 		return __To_String_Impl__<T>(value, base);
 	}
-
+	
+#ifdef _MSC_VER
 	template<typename T, std::enable_if_t<std::is_floating_point_v<T>, int> = 0>
 	[[nodiscard]] std::string ToString(const T value)
 	{
 		return __To_String_Impl__<T>(value);
 	}
 
-#ifdef _MSC_VER
 	template<typename T, std::enable_if_t<std::is_floating_point_v<T>, int> = 0>
 	[[nodiscard]] std::string ToString(const T value, const std::chars_format& fmt)
 	{

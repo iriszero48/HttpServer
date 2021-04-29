@@ -720,7 +720,7 @@ namespace KappaJuko
         }
     }
 
-    HttpServer::HttpServer(LauncherParams params)
+    HttpServer::HttpServer(LauncherParams params) : params(std::move(params))
     {
         LogThread = std::thread(DefaultLogThread, this->params.LogFileLevel, this->params.LogPath, this->params.ConsoleLog);
     }

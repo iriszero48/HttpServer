@@ -36,7 +36,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.11.0";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.11.1";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
