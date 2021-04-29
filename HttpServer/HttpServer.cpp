@@ -1062,7 +1062,7 @@ namespace KappaJuko
                 }
                 files.emplace(fnu8, fn, file->file_size());
             }
-            else if (file->is_directory())
+            else if (file->is_directory() && file->path().filename() != ".__th__")
             {
                 dirs.emplace(fnu8, fn);
             }
@@ -1102,7 +1102,7 @@ namespace KappaJuko
             while (!images.empty())
             {
                 String::StringCombine(
-                    page, "<li><img src=\"", images.top(), "\"/></li>");
+                    page, "<li><img src=\".__th__/", images.top(), ".bgp\"/></li>");
                 images.pop();
             }
             String::StringCombine(
@@ -1132,6 +1132,7 @@ namespace KappaJuko
             "<html>"
             "<head><title>Index of " , indexOfPath , "</title>"
             "<meta charset=\"utf-8\"/>"
+            "<script type=\"text/javascript\" src=\"/bpgdec8.js\"></script>"
             "<style type=\"text/css\">"
             "body {"
             "background: #222;"
@@ -1197,7 +1198,7 @@ namespace KappaJuko
                 "pv.id = 'preview';"
                 "pv.onclick = () => document.getElementById('preview').remove();"
                 "let pic = document.createElement('img');"
-                "pic.src = x.src;"
+                "pic.src = x.src.substring(8, x.src.length - 4);"
                 "pv.appendChild(pic);"
                 "[...document.getElementsByTagName('body')].forEach(x => x.appendChild(pv));"
                 "};"
