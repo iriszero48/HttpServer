@@ -1197,7 +1197,7 @@ namespace KappaJuko
                 "pv.id = 'preview';"
                 "pv.onclick = () => document.getElementById('preview').remove();"
                 "let pic = document.createElement('img');"
-                "pic.src = x.src.substring(8, x.src.substring - 4);"
+                "pic.src = x.src.replace('/.__th__/', '/');"
                 "pv.appendChild(pic);"
                 "[...document.getElementsByTagName('body')].forEach(x => x.appendChild(pv));"
                 "};"
