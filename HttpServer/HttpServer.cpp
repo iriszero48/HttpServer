@@ -1158,8 +1158,8 @@ namespace KappaJuko
             indexOfPage,
                 "<style type=\"text/css\">"
                 "li {"
-                "width: 460px;"
-                "height: 460px;"
+                "width: 400px;"
+                "height: 400px;"
                 "float: left;"
                 "margin-left: 10px;"
                 "margin-top: 10px;"
