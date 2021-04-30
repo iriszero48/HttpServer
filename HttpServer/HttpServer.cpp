@@ -1102,7 +1102,7 @@ namespace KappaJuko
             while (!images.empty())
             {
                 String::StringCombine(
-                    page, "<li><img src=\".__th__/", images.top(), ".bgp\"/></li>");
+                    page, "<li><img src=\".__th__/", images.top(), ".png\"/></li>");
                 images.pop();
             }
             String::StringCombine(
@@ -1132,7 +1132,6 @@ namespace KappaJuko
             "<html>"
             "<head><title>Index of " , indexOfPath , "</title>"
             "<meta charset=\"utf-8\"/>"
-            "<script type=\"text/javascript\" src=\"/bpgdec8.js\"></script>"
             "<style type=\"text/css\">"
             "body {"
             "background: #222;"
@@ -1166,7 +1165,7 @@ namespace KappaJuko
                 "margin-top: 10px;"
                 "list-style-type: none;"
                 "}"
-                "canvas {"
+                "img {"
                 "max-width: 100%;"
                 "max-height: 100%;"
                 "position: relative;"
@@ -1192,18 +1191,13 @@ namespace KappaJuko
                 "</style>"
                 "<script type=\"application/javascript\">"
                 "document.onreadystatechange = () =>"
-                "[...document.getElementsByTagName('canvas')].forEach(x => {"
+                "[...document.getElementsByTagName('img')].forEach(x => {"
                 "x.onclick = () => {"
                 "let pv = document.createElement('div');"
                 "pv.id = 'preview';"
                 "pv.onclick = () => document.getElementById('preview').remove();"
-                "let pic = document.createElement('canvas');"
-                "let ctx = pic.getContext('2d');"
-                "let img = new BPGDecoder(ctx);"
-                "img.onload = () => ctx.putImageData(this.imageData, 0, 0);"
-                "img.load(x.src);"
-                //"let pic = document.createElement('img');"
-                //"pic.src = x.src;"
+                "let pic = document.createElement('img');"
+                "pic.src = x.src;"
                 "pv.appendChild(pic);"
                 "[...document.getElementsByTagName('body')].forEach(x => x.appendChild(pv));"
                 "};"
