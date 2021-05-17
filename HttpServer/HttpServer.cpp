@@ -513,8 +513,8 @@ namespace KappaJuko
         Argument<std::filesystem::path> rootPath
         {
                 "-r",
-                "host:path,...(:80:.)",
-                ":80:."
+                "root path",
+                "."
         };
         Argument<std::unordered_map<std::string_view, std::filesystem::path>> services
         {
@@ -684,7 +684,7 @@ namespace KappaJuko
             LogInfo("Server start...\n", args.GetValuesDesc({
                 args.GetValuesDescConverter<std::filesystem::path          >([](const auto& x) { return x.string(); }),
                 args.GetValuesDescConverter<bool                           >([](const auto& x) { return x ? "true" : "false"; }),
-                args.GetValuesDescConverter<decltype(indexPages)::ValueType>([](const auto& x) { std::string buf("["); for (const auto& xs : x) { buf.append(xs); buf.append(";"); } return buf + "]"; }),
+                args.GetValuesDescConverter<decltype(indexPages)::ValueType>([](const auto& x) { return String::StringCombineNew("{", String::JoinNew(x.begin(), x.end(), ";"), "}"); }),
                 args.GetValuesDescConverter<KappaJuko::NetworkIoModel      >([](const auto& x) { return ToString(x); }),
                 args.GetValuesDescConverter<LogLevel                       >([](const auto& x) { return ToString(x); }),
                 args.GetValuesDescConverter<uint16_t                       >([](const auto& x) { return Convert::ToString(x); })
@@ -738,7 +738,7 @@ namespace KappaJuko
         {
             KappaJukoThrow(InitializationException, "WinSock init fail");
         }
-#else
+	#else
         struct sigaction action;
         action.sa_handler = [](int) {};
         sigemptyset(&action.sa_mask);
@@ -769,8 +769,8 @@ namespace KappaJuko
             KappaJukoThrow(CreateSocketException, "Can't create socket");
         }
 
-        char optVal[4] = { 0 };
-        setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, optVal, sizeof optVal);
+        auto optVal = int32_t{ 1 };
+        setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&optVal), sizeof(int32_t));
 
         sockaddr_in serverSockAddr{};
         serverSockAddr.sin_family = AF_INET;
@@ -780,7 +780,7 @@ namespace KappaJuko
         {
             KappaJukoThrow(BindPortException, "Can't bind port ", params.Port);
         }
-        listen(serverSocket, 10000);
+        listen(serverSocket, 511);
     }
 	
 #ifdef MacroWindows

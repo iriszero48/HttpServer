@@ -43,8 +43,8 @@ namespace String
 		std::transform(string.begin(), string.end(), string.begin(), static_cast<int(*)(int)>(std::tolower));
 	}
 
-	template<typename...Args>
-	void StringCombine(std::string& str, Args&&... args)
+	template<typename Str, typename...Args>
+	void StringCombine(Str& str, Args&&... args)
 	{
 		(str.append(args), ...);
 	}
@@ -53,7 +53,7 @@ namespace String
 	std::string StringCombineNew(Args&&... args)
 	{
 		std::string str{};
-		(str.append(args), ...);
+		StringCombine(str, std::forward<Args>(args)...);
 		return str;
 	}
 
@@ -71,5 +71,25 @@ namespace String
 		std::ostringstream buf{};
 		(buf << ... << fmt) << stream;
 		return buf.str();
+	}
+
+	template<typename It, typename Str, typename Out>
+	void Join(Out& str, It beg, It end, const Str& seq)
+	{
+		auto i = beg;
+		for (; i < end - 1; ++i)
+		{
+			str.append(*i);
+			str.append(seq);
+		}
+		str.append(*i);
+	}
+
+	template<typename It, typename Str>
+	std::string JoinNew(It beg, It end, const Str& seq)
+	{
+		std::string str{};
+		Join(str, beg, end, seq);
+		return str;
 	}
 }

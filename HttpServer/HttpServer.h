@@ -36,7 +36,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.11.1";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.11.2";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -419,8 +419,8 @@ namespace KappaJuko
 		HttpServer() = delete;
 		HttpServer(const HttpServer& httpServer) = delete;
 		HttpServer(HttpServer&& httpServer) = delete;
-		HttpServer operator=(const HttpServer& httpServer) = delete;
-		HttpServer operator=(HttpServer&& httpServer) = delete;
+		HttpServer& operator=(const HttpServer& httpServer) = delete;
+		HttpServer& operator=(HttpServer&& httpServer) = delete;
 		
 		void Init();
 		void Run();
