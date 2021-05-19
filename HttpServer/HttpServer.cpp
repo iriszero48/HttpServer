@@ -49,7 +49,7 @@ typedef struct
 #include <netdb.h>
 #include <sys/epoll.h>
 #include <unistd.h>
-//#include <fcntl.h>
+#include <fcntl.h>
 
 #endif
 
@@ -947,72 +947,79 @@ namespace KappaJuko
                 }
             }
 #else
-            epoll_event events[4096] = {0};
-            auto epollFd = epoll_create(4096);
-            std::unordered_map<SocketType, sockaddr_in> addrs{};
-            Thread::Channel<SocketType> msg{};
-            static const auto SendFunc = Response::DefaultSendFunc;
-            static const std::any SendFuncArgs = {};
-            static const auto RecvFunc = Request::DefaultRecvFunc;
-            static const std::any RecvFuncArgs = {};
-            for (auto i = 0; i < params.ThreadCount; ++i)
-            {
-                threadPool.emplace_back([&](const auto id)
-                {
-                    while (true)
-                    {
-                        auto client = msg.Read();
-                        bool alive;
-                        try
-                        {
-                            WorkParams workParams
-                            {
-                                client,
-                                addrs.at(client),
-                                true,
-                                RecvFunc,
-                                RecvFuncArgs,
-                                SendFunc,
-                                SendFuncArgs
-                            };
-                            alive = Work(workParams);
-                        }
-                        catch (const KappaJukoException& ex)
-                        {
-                            alive = false;
-                            LogError(
-                                "\nException in thread \"", Convert::ToString(id), "\" java.lang.NullPointerException: ", ex.what(),
-                                "\n    at ", MacroFunctionName, "(" __FILE__ ":" MacroLine ")\n");
-                        }
-                        if (!alive)
-                        {
-                            CloseSocket(client);
-                            epoll_ctl(epollFd, EPOLL_CTL_DEL, client, nullptr);
-                        }
-                    }
-                }, i);
-            }
-            addEvent(epollFd, serverSocket, EPOLLIN);
-            while (true)
-            {
-                auto res = epoll_wait(epollFd, events, 4096, -1);
-                for (decltype(res) i = 0; i < res; ++i)
-                {
-                    auto fd = events[i].data.fd;
-                    if (fd == serverSocket && (events[i].events & EPOLLIN))
-                    {
-                        sockaddr_in clientAddr{};
-                        auto addrLen = sizeof clientAddr;
-                        const auto client = accept(serverSocket, reinterpret_cast<sockaddr*>(&clientAddr), reinterpret_cast<socklen_t*>(&addrLen));
-                        if (client <= 0) continue;
-                        //fcntl(client, F_SETFL, fcntl(client, F_GETFL) | O_NONBLOCK);
-                        addEvent(epollFd, client, EPOLLIN | EPOLLET);
-                        addrs[client] = clientAddr;
-                    }
-                    else if (events[i].events & EPOLLIN)
-                    {
-                        msg.Write(fd);
-                    }
+	        epoll_event events[4096] = { 0 };
+	        auto epollFd = epoll_create(4096);
+	        std::unordered_map<SocketType, sockaddr_in> addrs{};
+	        Thread::Stack<SocketType> msg{};
+	        static const auto SendFunc = Response::DefaultSendFunc;
+	        static const std::any SendFuncArgs = {};
+	        static const auto RecvFunc = Request::DefaultRecvFunc;
+	        static const std::any RecvFuncArgs = {};
+	        for (auto i = 0; i < params.ThreadCount; ++i)
+	        {
+	            threadPool.emplace_back([&](const auto id)
+	            {
+	                while (true)
+	                {
+	                    auto client = msg.Pop();
+	                    while (!client.has_value())
+	                    {
+	                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	                        client = msg.Pop();
+	                    }
+	                    LogDebug("client: ", Convert::ToString(*client));
+	                    bool alive;
+	                    try
+	                    {
+	                        WorkParams workParams
+	                        {
+	                            *client,
+	                            addrs.at(*client),
+	                            true,
+	                            RecvFunc,
+	                            RecvFuncArgs,
+	                            SendFunc,
+	                            SendFuncArgs
+	                        };
+	                        alive = Work(workParams);
+	                    }
+	                    catch (const KappaJukoException& ex)
+	                    {
+	                        alive = false;
+	                        LogError(
+	                            "\nException in thread \"", Convert::ToString(id), "\" java.lang.NullPointerException: ", ex.what(),
+	                            "\n    at ", MacroFunctionName, "(" __FILE__ ":" MacroLine ")\n");
+	                    }
+	                    if (!alive)
+	                    {
+	                        CloseSocket(*client);
+	                        epoll_ctl(epollFd, EPOLL_CTL_DEL, *client, nullptr);
+	                    }
+	                }
+	            }, i);
+	        }
+	        addEvent(epollFd, serverSocket, EPOLLIN);
+	        while (true)
+	        {
+	            auto res = epoll_wait(epollFd, events, 4096, -1);
+	            for (decltype(res) i = 0; i < res; ++i)
+	            {
+	                auto fd = events[i].data.fd;
+	                if (fd == serverSocket && (events[i].events & EPOLLIN))
+	                {
+	                    sockaddr_in clientAddr{};
+	                    auto addrLen = sizeof clientAddr;
+	                    const auto client = accept(serverSocket, reinterpret_cast<sockaddr*>(&clientAddr), reinterpret_cast<socklen_t*>(&addrLen));
+	                    if (client <= 0) continue;
+	                    fcntl(client, F_SETFL, fcntl(client, F_GETFL) | O_NONBLOCK);
+	                    addEvent(epollFd, client, EPOLLIN | EPOLLET);
+	                    addrs[client] = clientAddr;
+	                    }
+	                else if (events[i].events & EPOLLIN)
+	                {
+	                    msg.Push(fd);
+	                    LogDebug("push fd: ", Convert::ToString(fd));
+	                }
                 }
             }
 #endif

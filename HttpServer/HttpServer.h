@@ -36,7 +36,7 @@
 
 namespace KappaJuko
 {
-	constexpr std::string_view ServerVersion = "KappaJuko/0.11.2";
+	constexpr std::string_view ServerVersion = "KappaJuko/0.12.0";
 	constexpr std::string_view HttpVersion = "HTTP/1.1";
 
 	using SocketType =
@@ -47,13 +47,13 @@ namespace KappaJuko
 #endif
 
 	ArgumentOptionHpp(NetworkIoModel, Blocking, Multiplexing)
-	
+
 	using MsgType = std::tuple<
 		decltype(std::chrono::system_clock::now()),
 		decltype(std::this_thread::get_id()),
 		std::string
 	>;
-	
+
 	static Logger<MsgType> Log{};
 	static std::thread LogThread{};
 
@@ -63,25 +63,25 @@ namespace KappaJuko
 #define LogLog(...) LogImpl(LogLevel::Log, __VA_ARGS__)
 #define LogInfo(...) LogImpl(LogLevel::Info, __VA_ARGS__)
 #define LogDebug(...) LogImpl(LogLevel::Debug, __VA_ARGS__)
-	
+
 	namespace WebUtility
-	{		
+	{
 #if (defined MacroWindows && DELETE)
 #define WinDeleteDefined
 #endif
-		
+
 #ifdef WinDeleteDefined
 #undef DELETE
 #endif
-		
+
 		ArgumentOptionHpp(HttpMethod, GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH)
-		
+
 #ifdef WinDeleteDefined
 #define DELETE (0x00010000L)
 #endif
 
 #undef WinDeleteDefined
-		
+
 		ArgumentOptionHpp(HttpHeadersKey, Accept, AcceptCH, AcceptCHLifetime, AcceptCharset, AcceptEncoding, AcceptLanguage,
 			AcceptPatch, AcceptRanges, AccessControlAllowCredentials, AccessControlAllowHeaders,
 			AccessControlAllowMethods, AccessControlAllowOrigin, AccessControlExposeHeaders,
@@ -97,7 +97,7 @@ namespace KappaJuko
 			ServerTiming, SetCookie, SourceMap, HTTPStrictTransportSecurity, TE, TimingAllowOrigin, Tk,
 			Trailer, TransferEncoding, UpgradeInsecureRequests, UserAgent, Vary, Via, WWWAuthenticate,
 			WantDigest, Warning, XContentTypeOptions, XDNSPrefetchControl, XFrameOptions, XXSSProtection)
-		
+
 		static const std::unordered_map<HttpHeadersKey, std::string_view> HttpHeaders
 		{
 			{HttpHeadersKey::Accept, "Accept"},
@@ -269,7 +269,7 @@ namespace KappaJuko
 			}
 			return tab;
 		}();
-		
+
 		static std::string UrlDecode(const std::string& raw);
 
 		static std::string UrlEncode(const std::string& raw);
@@ -381,7 +381,7 @@ namespace KappaJuko
 		std::filesystem::path LogPath = "";
 		LogLevel LogFileLevel = LogLevel::Info;
 		bool ConsoleLog = true;
-		
+
 		std::optional<std::optional<bool>(*)(Request&, decltype(Response::SendFunc), const std::any&, bool, const LauncherParams&)> CgiHook = std::nullopt;
 
 		[[nodiscard]] static LauncherParams FromArgs(int args, char** argv);
@@ -399,7 +399,7 @@ namespace KappaJuko
 	};
 
 	class KappaJukoException : public std::runtime_error { using std::runtime_error::runtime_error; };
-	
+
 	class InitializationException : public KappaJukoException { using KappaJukoException::KappaJukoException; };
 	class CreateSocketException final : public InitializationException { using InitializationException::InitializationException; };
 	class BindPortException final : public InitializationException { using InitializationException::InitializationException; };
@@ -408,7 +408,7 @@ namespace KappaJuko
 	class ResponseException final : public RunException { using RunException::RunException; };
 	class RequestException : public RunException { using RunException::RunException; };
 	class RequestParseError final : public RequestException { using RequestException::RequestException; };
-	
+
 	class HttpServer
 	{
 	public:
@@ -421,11 +421,11 @@ namespace KappaJuko
 		HttpServer(HttpServer&& httpServer) = delete;
 		HttpServer& operator=(const HttpServer& httpServer) = delete;
 		HttpServer& operator=(HttpServer&& httpServer) = delete;
-		
+
 		void Init();
 		void Run();
 		void Close() const;
-		
+
 	private:
 		LauncherParams params;
 		SocketType serverSocket = -1;

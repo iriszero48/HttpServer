@@ -1,9 +1,12 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <ClassDiagram MajorVersion="1" MinorVersion="1">
   <Class Name="Logger&lt;T&gt;">
-    <Position X="14.25" Y="1.5" Width="1.5" />
+    <Position X="16" Y="3.75" Width="2" />
+    <Compartments>
+      <Compartment Name="Nested Types" Collapsed="false" />
+    </Compartments>
     <NestedTypes>
-      <Struct Name="Logger&lt;T&gt;::MsgType" Collapsed="true">
+      <Struct Name="Logger&lt;T&gt;::MsgType">
         <TypeIdentifier>
           <NewMemberFileName>Log.h</NewMemberFileName>
         </TypeIdentifier>
@@ -15,93 +18,96 @@
     </TypeIdentifier>
   </Class>
   <Class Name="KappaJuko::Request">
-    <Position X="16" Y="1.5" Width="1.5" />
+    <Position X="28.5" Y="7" Width="1.75" />
     <TypeIdentifier>
       <HashCode>BAAQABEAAQAACCJICAAiAABBCAABgAgBAAAgAIAIIAQ=</HashCode>
       <FileName>HttpServer.h</FileName>
     </TypeIdentifier>
   </Class>
   <Class Name="KappaJuko::Response">
-    <Position X="17.75" Y="1.5" Width="1.5" />
+    <Position X="13" Y="7.5" Width="2" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAgSBAAAAAAEAgAQCASAAAAAAEAAAAQAAIAAg=</HashCode>
       <FileName>HttpServer.h</FileName>
     </TypeIdentifier>
   </Class>
-  <Class Name="KappaJuko::KappaJukoException">
-    <Position X="7.25" Y="0.5" Width="1.75" />
+  <Class Name="KappaJuko::KappaJukoException" Collapsed="true">
+    <Position X="7.25" Y="0.5" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>HttpServer.h</FileName>
     </TypeIdentifier>
   </Class>
-  <Class Name="KappaJuko::InitializationException">
-    <Position X="10.75" Y="2" Width="2" />
+  <Class Name="KappaJuko::InitializationException" Collapsed="true">
+    <Position X="10.75" Y="2" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>HttpServer.h</FileName>
     </TypeIdentifier>
   </Class>
-  <Class Name="KappaJuko::CreateSocketException">
-    <Position X="9.5" Y="3.25" Width="2" />
+  <Class Name="KappaJuko::CreateSocketException" Collapsed="true">
+    <Position X="9.5" Y="3.25" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>HttpServer.h</FileName>
     </TypeIdentifier>
   </Class>
-  <Class Name="KappaJuko::BindPortException">
-    <Position X="11.75" Y="3.25" Width="1.75" />
+  <Class Name="KappaJuko::BindPortException" Collapsed="true">
+    <Position X="11.75" Y="3.25" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>HttpServer.h</FileName>
     </TypeIdentifier>
   </Class>
-  <Class Name="KappaJuko::RunException">
+  <Class Name="KappaJuko::RunException" Collapsed="true">
     <Position X="6.25" Y="2" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>HttpServer.h</FileName>
     </TypeIdentifier>
   </Class>
-  <Class Name="KappaJuko::ResponseException">
-    <Position X="5" Y="3.25" Width="1.75" />
+  <Class Name="KappaJuko::ResponseException" Collapsed="true">
+    <Position X="5" Y="3.25" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>HttpServer.h</FileName>
     </TypeIdentifier>
   </Class>
-  <Class Name="KappaJuko::RequestException">
-    <Position X="7.25" Y="3.25" Width="1.75" />
+  <Class Name="KappaJuko::RequestException" Collapsed="true">
+    <Position X="7.25" Y="3.25" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>HttpServer.h</FileName>
     </TypeIdentifier>
   </Class>
-  <Class Name="KappaJuko::RequestParseError">
-    <Position X="7.25" Y="4.75" Width="1.75" />
+  <Class Name="KappaJuko::RequestParseError" Collapsed="true">
+    <Position X="7.25" Y="4.75" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>HttpServer.h</FileName>
     </TypeIdentifier>
   </Class>
   <Class Name="KappaJuko::HttpServer">
-    <Position X="19.5" Y="0.5" Width="1.5" />
+    <Position X="25.75" Y="1.75" Width="2" />
     <TypeIdentifier>
       <HashCode>AAgAAAAAAAACAAAAAAAAAAEAACAAAAAAAAIqgACAAAI=</HashCode>
       <FileName>HttpServer.h</FileName>
     </TypeIdentifier>
   </Class>
   <Class Name="ArgumentsParse::IArgument">
-    <Position X="2.5" Y="3.5" Width="1.5" />
+    <Position X="17.75" Y="8.25" Width="2" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAABABAAACAAAAEAAAAAAAAAAIgAAAABAA=</HashCode>
       <FileName>Arguments.h</FileName>
     </TypeIdentifier>
   </Class>
   <Class Name="ArgumentsParse::Argument&lt;T, ArgLength&gt;">
-    <Position X="6" Y="6.25" Width="2.25" />
+    <Position X="20.5" Y="7.75" Width="2.25" />
+    <Compartments>
+      <Compartment Name="Nested Types" Collapsed="false" />
+    </Compartments>
     <NestedTypes>
-      <Struct Name="ArgumentsParse::Argument&lt;T, ArgLength&gt;::ConvertResult" Collapsed="true">
+      <Struct Name="ArgumentsParse::Argument&lt;T, ArgLength&gt;::ConvertResult">
         <TypeIdentifier>
           <NewMemberFileName>Arguments.h</NewMemberFileName>
         </TypeIdentifier>
@@ -113,28 +119,28 @@
     </TypeIdentifier>
   </Class>
   <Class Name="ArgumentsParse::Arguments">
-    <Position X="14.25" Y="0.5" Width="1.5" />
+    <Position X="23.5" Y="8.25" Width="2.5" />
     <TypeIdentifier>
       <HashCode>AAIgAQAAAAAAAABAAAAgAAAAAAEAAAAAAAAgAAAAAAA=</HashCode>
       <FileName>Arguments.h</FileName>
     </TypeIdentifier>
   </Class>
-  <Class Name="CppServerPages::CppServerPagesException">
-    <Position X="2.75" Y="2" Width="2.25" />
+  <Class Name="CppServerPages::CppServerPagesException" Collapsed="true">
+    <Position X="2.75" Y="2" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>CppServerPages.h</FileName>
     </TypeIdentifier>
   </Class>
   <Class Name="CppServerPages::Database&lt;K, V&gt;">
-    <Position X="17.75" Y="0.5" Width="1.5" />
+    <Position X="19" Y="4.25" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAEEAQBABAAAAAIAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>CppServerPages.h</FileName>
     </TypeIdentifier>
   </Class>
   <Class Name="Thread::Channel&lt;T&gt;">
-    <Position X="16" Y="0.5" Width="1.5" />
+    <Position X="14" Y="2" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAABgAAAAAAAACABAAAEAAAg=</HashCode>
       <FileName>Thread.h</FileName>
@@ -147,71 +153,71 @@
       <FileName>HttpServer.cpp</FileName>
     </TypeIdentifier>
   </Struct>
-  <Struct Name="KappaJuko::IndexOfFuncParams">
-    <Position X="16" Y="2.75" Width="1.75" />
+  <Struct Name="KappaJuko::IndexOfFuncParams" Collapsed="true">
+    <Position X="19" Y="2.75" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAIAAAAAAQAAAAAAAAAAEAQAAAAoAAA=</HashCode>
       <FileName>HttpServer.cpp</FileName>
     </TypeIdentifier>
   </Struct>
-  <Struct Name="KappaJuko::FuncAndArgs&lt;T&gt;">
-    <Position X="14.25" Y="2.75" Width="1.75" />
+  <Struct Name="KappaJuko::FuncAndArgs&lt;T&gt;" Collapsed="true">
+    <Position X="14.75" Y="1" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAEAAA=</HashCode>
       <FileName>HttpServer.cpp</FileName>
     </TypeIdentifier>
   </Struct>
   <Struct Name="KappaJuko::LauncherParams">
-    <Position X="17.75" Y="2.75" Width="1.5" />
+    <Position X="23.5" Y="1.25" Width="1.75" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAEABAEAAAggAAACAAAAAARUAEAgAFAAgA=</HashCode>
       <FileName>HttpServer.h</FileName>
     </TypeIdentifier>
   </Struct>
   <Struct Name="KappaJuko::WorkParams">
-    <Position X="16" Y="4.75" Width="1.5" />
+    <Position X="28.25" Y="2.25" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAQAAAAAAAAADAAQAAIAIAAQ=</HashCode>
       <FileName>HttpServer.h</FileName>
     </TypeIdentifier>
   </Struct>
-  <Struct Name="ArgumentsParse::SetValueTypeImp&lt;Len&gt;">
-    <Position X="16" Y="3.75" Width="2" />
+  <Struct Name="ArgumentsParse::SetValueTypeImp&lt;Len&gt;" Collapsed="true">
+    <Position X="18.75" Y="2.25" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>Arguments.h</FileName>
     </TypeIdentifier>
   </Struct>
-  <Struct Name="ArgumentsParse::SetValueTypeImp&lt;1&gt;">
-    <Position X="17.75" Y="3.75" Width="2" />
+  <Struct Name="ArgumentsParse::SetValueTypeImp&lt;1&gt;" Collapsed="true">
+    <Position X="19.5" Y="1.75" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>Arguments.h</FileName>
     </TypeIdentifier>
   </Struct>
-  <Struct Name="ArgumentsParse::SetValueTypeImp&lt;0&gt;">
-    <Position X="19.5" Y="3.75" Width="2" />
+  <Struct Name="ArgumentsParse::SetValueTypeImp&lt;0&gt;" Collapsed="true">
+    <Position X="20" Y="1.25" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>Arguments.h</FileName>
     </TypeIdentifier>
   </Struct>
   <Struct Name="CppServerPages::Session">
-    <Position X="14.25" Y="3.75" Width="1.5" />
+    <Position X="21" Y="4.75" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAABAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>CppServerPages.h</FileName>
     </TypeIdentifier>
   </Struct>
-  <Struct Name="Thread::Synchronize&lt;Func&gt;">
-    <Position X="14.25" Y="4.75" Width="1.75" />
+  <Struct Name="Thread::Synchronize&lt;Func&gt;" Collapsed="true">
+    <Position X="18.5" Y="0.5" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAAAAAAAAEAAAAAAAAAAIAAAAIAAAEAAAAAA=</HashCode>
       <FileName>Thread.h</FileName>
     </TypeIdentifier>
   </Struct>
-  <Struct Name="String::New&lt;Func&gt;">
-    <Position X="19.5" Y="2.75" Width="1.5" />
+  <Struct Name="String::New&lt;Func&gt;" Collapsed="true">
+    <Position X="20" Y="0.75" Width="1.5" />
     <TypeIdentifier>
       <HashCode>AAAAAAAAAgAAACAAEAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
       <FileName>String.h</FileName>
