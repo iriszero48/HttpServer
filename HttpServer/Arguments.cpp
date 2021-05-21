@@ -69,10 +69,10 @@ namespace ArgumentsParse
 
 	void Arguments::Parse(const int argc, char** argv)
 	{
-		if (argc < 2)
-		{
-			__Arguments_ThrowEx__("An option must be specified");
-		}
+		//if (argc < 2)
+		//{
+		//	__Arguments_ThrowEx__("An option must be specified");
+		//}
 #define UnrecognizedOption(...) __Arguments_ThrowEx__("Unrecognized option: ", __VA_ARGS__)
 #define MissingArgument(...) __Arguments_ThrowEx__("Missing argument for option: ", __VA_ARGS__)
 		for (auto i = 1; i < argc; ++i)
