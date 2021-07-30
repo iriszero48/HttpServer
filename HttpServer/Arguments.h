@@ -8,6 +8,8 @@
 #include <sstream>
 #include <typeindex>
 #include <variant>
+#include <unordered_map>
+#include <vector>
 
 template <typename ...Args>
 std::string __Arguments_Combine__(Args&&... args)
@@ -26,25 +28,13 @@ std::string __Arguments_Combine__(Args&&... args)
 
 namespace ArgumentsParse
 {
+	constexpr auto Version = "1.1.0";
+
 	using ArgLengthType = std::uint8_t;
 
-	template<ArgLengthType Len>
-	struct SetValueTypeImp
-	{
-		using Type = std::vector<std::string_view>;
-	};
-
-	template<>
-	struct SetValueTypeImp<1>
-	{
-		using Type = std::string_view;
-	};
-
-	template<>
-	struct SetValueTypeImp<0>
-	{
-		using Type = std::nullopt_t;
-	};
+	template<ArgLengthType Len> struct SetValueTypeImp { using Type = std::vector<std::string_view>; };
+	template<> struct SetValueTypeImp<1> { using Type = std::string_view; };
+	template<> struct SetValueTypeImp<0> { using Type = std::nullopt_t; };
 
 	class IArgument
 	{
@@ -59,7 +49,6 @@ namespace ArgumentsParse
 		IArgument& operator=(IArgument&& iArgument) = default;
 
 		virtual void Set(const SetValueType& value) = 0;
-		//virtual operator std::string() const = 0;
 		virtual std::any Get() const = 0;
 		virtual std::string GetName() const = 0;
 		virtual std::string GetDesc() const = 0;
@@ -121,8 +110,6 @@ namespace ArgumentsParse
 
 		[[nodiscard]] std::string GetDesc() const override { return desc; }
 
-		//[[nodiscard]] operator std::string() const override { return name; }
-
 		ArgLengthType GetArgLength() const override { return ArgLength; }
 
 		static ConvertResult DefaultConvert(ConvertFuncParamType value) { return { ValueTypeOpt(value), {} }; }
@@ -137,7 +124,7 @@ namespace ArgumentsParse
 	class Arguments
 	{
 	public:
-		void Parse(int argc, char** argv);
+		void Parse(int argc, const char** argv);
 
 		template <typename T, ArgLengthType ArgLength>
 		void Add(Argument<T, ArgLength>& arg)
@@ -208,7 +195,7 @@ namespace ArgumentsParse
 	std::optional<option> To##option(const std::string& in);\
 	std::string option##Desc(const std::string& defaultValue = "");
 
-#define ArgumentOptionCpp(option, ...)\
+#define ArgumentOptionCpp(option)\
 	std::string ToString(const option& in) { return __##option##_map__.at(in); }\
 	std::optional<option> To##option(const std::string& in) { for (const auto& [k, v] : __##option##_map__) if (v == in) return k; return std::nullopt; }\
 	std::string option##Desc(const std::string& defaultValue)\
@@ -232,7 +219,7 @@ namespace ArgumentsParse
 
 #define ArgumentOption(option, ...)\
 	ArgumentOptionHpp(option, __VA_ARGS__)\
-	ArgumentOptionCpp(option, __VA_ARGS__)
+	ArgumentOptionCpp(option)
 }
 
 #undef __Arguments_ToStringFunc__
